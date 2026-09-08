@@ -309,196 +309,257 @@ system_program::transfer(
         Ok(())
     }
 
+ // ============================================================
+// PRIVATE VOTE
+//
+// Vote choice is NEVER stored in VoteReceipt.
+//
+// YES / NO / ABSTAIN are only aggregated.
+//
+// Every member must vote before the proposal can be decided.
+//
+// Once the FINAL member votes:
+//
+//   YES threshold reached
+//          ↓
+//   TREASURY -> RECIPIENT automatically
+//
+// OR
+//
+//   YES threshold not reached
+//          ↓
+//   PROPOSAL REJECTED
+//
+// There is NO early execution based on quorum.
+// ============================================================
+
+pub fn cast_private_vote(
+    ctx: Context<CastPrivateVote>,
+    vote: u8,
+) -> Result<()> {
     // ============================================================
-    // PRIVATE VOTE
-    //
-    // Vote choice is NEVER stored in VoteReceipt.
-    //
-    // YES/NO/ABSTAIN are only aggregated.
-    //
-    // When quorum + threshold are reached:
-    //
-    //      TREASURY -> RECIPIENT
-    //
-    // happens automatically.
+    // VALIDATE VOTE
     // ============================================================
 
-    pub fn cast_private_vote(
-        ctx: Context<CastPrivateVote>,
-        vote: u8,
-    ) -> Result<()> {
-        require!(
-            vote <= 2,
-            ErrorCode::InvalidVoteChoice
-        );
+    require!(
+        vote <= 2,
+        ErrorCode::InvalidVoteChoice
+    );
 
-        require!(
-            ctx.accounts.group.active,
-            ErrorCode::InactiveGroup
-        );
+    require!(
+        ctx.accounts.group.active,
+        ErrorCode::InactiveGroup
+    );
 
-        require!(
-            ctx.accounts.proposal.status
-                == ProposalStatus::Voting as u8,
-            ErrorCode::InvalidProposalStatus
-        );
+    require!(
+        ctx.accounts.proposal.status
+            == ProposalStatus::Voting as u8,
+        ErrorCode::InvalidProposalStatus
+    );
 
-        let now =
-            Clock::get()?.unix_timestamp;
+    let now =
+        Clock::get()?.unix_timestamp;
 
-        require!(
-            now <= ctx.accounts
-                .proposal
-                .voting_deadline,
-            ErrorCode::VotingClosed
-        );
+    require!(
+        now <= ctx.accounts
+            .proposal
+            .voting_deadline,
+        ErrorCode::VotingClosed
+    );
 
-        require_keys_eq!(
-            ctx.accounts.member.group,
-            ctx.accounts.group.key(),
-            ErrorCode::InvalidMember
-        );
+    // ============================================================
+    // VALIDATE MEMBER
+    // ============================================================
 
-        require_keys_eq!(
-            ctx.accounts.member.wallet,
-            ctx.accounts.voter.key(),
-            ErrorCode::InvalidMember
-        );
+    require_keys_eq!(
+        ctx.accounts.member.group,
+        ctx.accounts.group.key(),
+        ErrorCode::InvalidMember
+    );
 
-        // ========================================================
-        // RECORD AGGREGATE VOTE
-        // ========================================================
+    require_keys_eq!(
+        ctx.accounts.member.wallet,
+        ctx.accounts.voter.key(),
+        ErrorCode::InvalidMember
+    );
 
-        let proposal =
-            &mut ctx.accounts.proposal;
+    // ============================================================
+    // RECORD AGGREGATE VOTE
+    // ============================================================
 
-        match vote {
-            0 => {
-                proposal.yes = proposal
-                    .yes
-                    .checked_add(1)
-                    .ok_or(ErrorCode::Overflow)?;
-            }
+    let proposal =
+        &mut ctx.accounts.proposal;
 
-            1 => {
-                proposal.no = proposal
-                    .no
-                    .checked_add(1)
-                    .ok_or(ErrorCode::Overflow)?;
-            }
-
-            2 => {
-                proposal.abstain = proposal
-                    .abstain
-                    .checked_add(1)
-                    .ok_or(ErrorCode::Overflow)?;
-            }
-
-            _ => {
-                return Err(
-                    ErrorCode::InvalidVoteChoice.into()
-                );
-            }
-        }
-
-        proposal.voter_count =
-            proposal
-                .voter_count
+    match vote {
+        // YES
+        0 => {
+            proposal.yes = proposal
+                .yes
                 .checked_add(1)
                 .ok_or(ErrorCode::Overflow)?;
-
-        // ========================================================
-        // CREATE ONE-TIME VOTE RECEIPT
-        //
-        // PDA prevents the same wallet voting twice.
-        // ========================================================
-
-        let receipt =
-            &mut ctx.accounts.vote_receipt;
-
-        receipt.proposal =
-            proposal.key();
-
-        receipt.voter =
-            ctx.accounts.voter.key();
-
-        receipt.bump =
-            ctx.bumps.vote_receipt;
-
-        // ========================================================
-        // QUORUM
-        // ========================================================
-
-        let quorum = ceil_div(
-            (ctx.accounts
-                .group
-                .member_count as u64)
-                .checked_mul(
-                    ctx.accounts
-                        .group
-                        .quorum_bps as u64,
-                )
-                .ok_or(ErrorCode::Overflow)?,
-            BPS_DENOMINATOR,
-        );
-
-        let participation =
-            proposal.voter_count as u64;
-
-        // ========================================================
-        // APPROVAL PERCENTAGE
-        //
-        // Abstain participates in quorum but does not count
-        // toward YES/NO approval percentage.
-        // ========================================================
-
-        let denominator =
-            (proposal.yes as u64)
-                .checked_add(
-                    proposal.no as u64
-                )
-                .ok_or(ErrorCode::Overflow)?;
-
-        let yes_bps =
-            if denominator == 0 {
-                0
-            } else {
-                (proposal.yes as u64)
-                    .checked_mul(
-                        BPS_DENOMINATOR
-                    )
-                    .ok_or(ErrorCode::Overflow)?
-                    / denominator
-            };
-
-        let quorum_reached =
-            participation >= quorum;
-
-        let threshold_reached =
-            yes_bps
-                >= ctx.accounts
-                    .group
-                    .voting_threshold_bps
-                    as u64;
-
-        // ========================================================
-        // AUTO EXECUTION
-        // ========================================================
-
-        if quorum_reached
-            && threshold_reached
-        {
-            execute_treasury_payment(
-                &mut ctx.accounts.group,
-                proposal,
-                &ctx.accounts.treasury,
-                &ctx.accounts.recipient,
-            )?;
         }
 
-        Ok(())
+        // NO
+        1 => {
+            proposal.no = proposal
+                .no
+                .checked_add(1)
+                .ok_or(ErrorCode::Overflow)?;
+        }
+
+        // ABSTAIN
+        2 => {
+            proposal.abstain = proposal
+                .abstain
+                .checked_add(1)
+                .ok_or(ErrorCode::Overflow)?;
+        }
+
+        _ => {
+            return Err(
+                ErrorCode::InvalidVoteChoice.into()
+            );
+        }
     }
 
+    proposal.voter_count =
+        proposal
+            .voter_count
+            .checked_add(1)
+            .ok_or(ErrorCode::Overflow)?;
+
+    // ============================================================
+    // CREATE ONE-TIME VOTE RECEIPT
+    //
+    // PDA:
+    //
+    // [VOTE_SEED, proposal, voter]
+    //
+    // prevents the same wallet from voting twice.
+    // ============================================================
+
+    let receipt =
+        &mut ctx.accounts.vote_receipt;
+
+    receipt.proposal =
+        proposal.key();
+
+    receipt.voter =
+        ctx.accounts.voter.key();
+
+    receipt.bump =
+        ctx.bumps.vote_receipt;
+
+    // ============================================================
+    // CHECK WHETHER EVERY MEMBER HAS VOTED
+    // ============================================================
+
+    let all_members_voted =
+        proposal.voter_count
+            >= ctx.accounts.group.member_count;
+
+    // ============================================================
+    // DO NOTHING YET IF VOTING IS STILL IN PROGRESS
+    //
+    // Example:
+    //
+    // Members = 6
+    // Votes   = 3
+    //
+    // Even if quorum + threshold are reached,
+    // DO NOT execute.
+    // ============================================================
+
+    if !all_members_voted {
+        return Ok(());
+    }
+
+    // ============================================================
+    // ALL MEMBERS HAVE NOW VOTED
+    //
+    // Calculate YES percentage.
+    //
+    // ABSTAIN counts toward participation,
+    // but does NOT count toward YES/NO percentage.
+    // ============================================================
+
+    let denominator =
+        (proposal.yes as u64)
+            .checked_add(
+                proposal.no as u64
+            )
+            .ok_or(ErrorCode::Overflow)?;
+
+    let yes_bps =
+        if denominator == 0 {
+            0
+        } else {
+            (proposal.yes as u64)
+                .checked_mul(
+                    BPS_DENOMINATOR
+                )
+                .ok_or(ErrorCode::Overflow)?
+                / denominator
+        };
+
+    // ============================================================
+    // CHECK APPROVAL THRESHOLD
+    // ============================================================
+
+    let threshold_reached =
+        yes_bps
+            >= ctx.accounts
+                .group
+                .voting_threshold_bps
+                as u64;
+
+    // ============================================================
+    // FINAL DECISION
+    // ============================================================
+
+    if threshold_reached {
+        // --------------------------------------------------------
+        // PASSED
+        //
+        // Execute treasury payment immediately.
+        //
+        // execute_treasury_payment() should set:
+        //
+        // proposal.status = EXECUTED
+        //
+        // and update the group/treasury balances.
+        // --------------------------------------------------------
+
+        execute_treasury_payment(
+            &mut ctx.accounts.group,
+            proposal,
+            &ctx.accounts.treasury,
+            &ctx.accounts.recipient,
+        )?;
+    } else {
+        // --------------------------------------------------------
+        // REJECTED
+        //
+        // Release the reserved proposal funds.
+        // --------------------------------------------------------
+
+        proposal.status =
+            ProposalStatus::Rejected as u8;
+
+        ctx.accounts
+            .group
+            .reserved_lamports =
+            ctx.accounts
+                .group
+                .reserved_lamports
+                .checked_sub(
+                    proposal.amount_lamports
+                )
+                .ok_or(ErrorCode::Overflow)?;
+    }
+
+    Ok(())
+}
     // ============================================================
     // REALTIME HEARTBEAT
     // ============================================================
@@ -516,107 +577,88 @@ system_program::transfer(
         Ok(())
     }
 
-    // ============================================================
-    // FINALIZE
-    //
-    // Used when voting deadline expires without auto execution.
-    //
-    // If passed, funds remain reserved and can be executed through
-    // execute_proposal.
-    //
-    // If rejected, reservation is released.
-    // ============================================================
+// ============================================================
+// FINALIZE PROPOSAL
+//
+// Finalizes a proposal after:
+//   1. All members have voted.
+//
+// If the YES vote percentage reaches the group's voting
+// threshold, the treasury payment is executed automatically.
+//
+// If the YES vote percentage does not reach the threshold,
+// the proposal is rejected and the reserved funds are released.
+//
+// NOTE:
+// This instruction performs the treasury execution directly.
+// There is no separate manual execution step for a proposal
+// that passes.
+// ============================================================
 
-    pub fn finalize_proposal(
-        ctx: Context<FinalizeProposal>,
-    ) -> Result<()> {
-        let proposal =
-            &mut ctx.accounts.proposal;
+pub fn finalize_proposal(
+    ctx: Context<FinalizeProposal>,
+) -> Result<()> {
+    let proposal = &mut ctx.accounts.proposal;
 
-        require!(
-            proposal.status
-                == ProposalStatus::Voting as u8,
-            ErrorCode::InvalidProposalStatus
-        );
+    require!(
+        proposal.status == ProposalStatus::Voting as u8,
+        ErrorCode::InvalidProposalStatus
+    );
 
-        let now =
-            Clock::get()?.unix_timestamp;
+    let now = Clock::get()?.unix_timestamp;
 
-        require!(
-            now >= proposal.voting_deadline
-                || proposal.voter_count
-                    >= ctx.accounts
-                        .group
-                        .member_count,
-            ErrorCode::VotingOpen
-        );
+    require!(
+        now >= proposal.voting_deadline,
+        ErrorCode::VotingOpen
+    );
 
-        let quorum = ceil_div(
-            (ctx.accounts
-                .group
-                .member_count as u64)
-                .checked_mul(
-                    ctx.accounts
-                        .group
-                        .quorum_bps as u64,
-                )
-                .ok_or(ErrorCode::Overflow)?,
-            BPS_DENOMINATOR,
-        );
+    // All members must vote.
+    require!(
+        proposal.voter_count >= ctx.accounts.group.member_count,
+        ErrorCode::AllMembersMustVote
+    );
 
-        let participation =
-            proposal.voter_count as u64;
+    let denominator =
+        (proposal.yes as u64)
+            .checked_add(proposal.no as u64)
+            .ok_or(ErrorCode::Overflow)?;
 
-        let denominator =
-            (proposal.yes as u64)
-                .checked_add(
-                    proposal.no as u64
-                )
-                .ok_or(ErrorCode::Overflow)?;
-
-        let yes_bps =
-            if denominator == 0 {
-                0
-            } else {
-                (proposal.yes as u64)
-                    .checked_mul(
-                        BPS_DENOMINATOR
-                    )
-                    .ok_or(ErrorCode::Overflow)?
-                    / denominator
-            };
-
-        let passed =
-            participation >= quorum
-                && yes_bps
-                    >= ctx.accounts
-                        .group
-                        .voting_threshold_bps
-                        as u64;
-
-        if passed {
-            proposal.status =
-                ProposalStatus::Passed as u8;
+    let yes_bps =
+        if denominator == 0 {
+            0
         } else {
-            proposal.status =
-                ProposalStatus::Rejected as u8;
+            (proposal.yes as u64)
+                .checked_mul(BPS_DENOMINATOR)
+                .ok_or(ErrorCode::Overflow)?
+                / denominator
+        };
 
-            // Release reserved funds.
+    let passed =
+        yes_bps
+            >= ctx.accounts
+                .group
+                .voting_threshold_bps
+                as u64;
+
+    if passed {
+        proposal.status =
+            ProposalStatus::Passed as u8;
+    } else {
+        proposal.status =
+            ProposalStatus::Rejected as u8;
+
+        ctx.accounts.group.reserved_lamports =
             ctx.accounts
                 .group
-                .reserved_lamports =
-                ctx.accounts
-                    .group
-                    .reserved_lamports
-                    .checked_sub(
-                        proposal.amount_lamports
-                    )
-                    .ok_or(ErrorCode::Overflow)?;
-        }
-
-        Ok(())
+                .reserved_lamports
+                .checked_sub(
+                    proposal.amount_lamports
+                )
+                .ok_or(ErrorCode::Overflow)?;
     }
 
+    Ok(())
+}
     // ============================================================
     // MANUAL EXECUTION
     //
@@ -1542,6 +1584,7 @@ pub enum ProposalStatus {
 // ERRORS
 // ================================================================
 
+
 #[error_code]
 pub enum ErrorCode {
     #[msg("invalid target amount")]
@@ -1597,4 +1640,11 @@ pub enum ErrorCode {
 
     #[msg("invalid treasury")]
     InvalidTreasury,
+
+    // ------------------------------------------------------------
+    // Governance
+    // ------------------------------------------------------------
+
+    #[msg("all members must vote before the proposal can be finalized")]
+    AllMembersMustVote,
 }
