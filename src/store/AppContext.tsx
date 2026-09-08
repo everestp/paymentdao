@@ -1,317 +1,1771 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import type {
-  Proposal, Transaction, ActivityEvent, AppNotification,
-  PaymentRequest, GroupData, WalletAsset, VoteType, Member, LiveUpdate, Payment, Contribution,
-} from '@/types';
+import {
+  contributeOnChain,
+  createGroupOnChain,
+  createProposalOnChain,
+  voteOnProposalOnChain,
+  connectWallet,
+  getConnectedWallet,
+} from '@/chain/paydao';
+
 import { mockData } from '@/data/mockData';
 
-interface ToastMsg {
+import type {
+  ActivityEvent,
+  AppNotification,
+  Contribution,
+  Currency,
+  GroupData,
+  Member,
+  Payment,
+  PaymentRequest,
+  Proposal,
+  Transaction,
+  VoteType,
+  WalletAsset,
+} from '@/types';
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
+
+import { PublicKey } from '@solana/web3.js';
+
+/* =========================================================
+   TOAST TYPES
+========================================================= */
+
+export type ToastVariant =
+  | 'success'
+  | 'error'
+  | 'info'
+  | 'live';
+
+export interface Toast {
   id: string;
   title: string;
   description?: string;
-  variant: 'success' | 'error' | 'info' | 'live';
+  variant: ToastVariant;
 }
 
-interface AppState {
-  isLoggedIn: boolean;
-  hasOnboarded: boolean;
-  login: () => void;
-  logout: () => void;
-  completeOnboarding: () => void;
+/* =========================================================
+   INPUT TYPES
+========================================================= */
 
+export interface CreateGroupInput {
+  name: string;
+  description: string;
+  requiredAmount: number;
+  currency: Currency;
+  deadline?: string;
+  visibility: 'public' | 'private';
+  governance: 'democratic' | 'weighted' | 'council';
+  votingThreshold: number;
+}
+
+export interface CreateProposalInput {
+  groupId: string;
+  title: string;
+  description: string;
+  amount: number;
+  currency: Currency;
+  recipient: string;
+  duration: number;
+}
+
+/* =========================================================
+   WALLET USER
+========================================================= */
+
+export interface WalletUser {
+  walletAddress: string;
+  shortAddress: string;
+  name: string;
+  avatarColor: string;
+}
+
+/* =========================================================
+   APP STATE
+========================================================= */
+
+export interface AppState {
   groups: GroupData[];
   proposals: Proposal[];
+  contributions: Contribution[];
   transactions: Transaction[];
   activity: ActivityEvent[];
   notifications: AppNotification[];
-  paymentRequests: PaymentRequest[];
   payments: Payment[];
-  walletAssets: WalletAsset[];
+  paymentRequests: PaymentRequest[];
   members: Member[];
+  walletAssets: WalletAsset[];
 
-  user: typeof mockData.currentUser;
-  stats: typeof mockData.stats;
+  /*
+   * Wallet identity
+   */
+  user: WalletUser | null;
+  walletAddress: string | null;
+  isWalletConnected: boolean;
+  walletLoading: boolean;
 
-  contribute: (groupId: string, amount: number, currency: 'USDC' | 'SOL' | 'PAY') => void;
-  voteOnProposal: (proposalId: number, vote: VoteType) => void;
-  createProposal: (data: { groupId: string; title: string; description: string; amount: number; currency: 'USDC' | 'SOL' | 'PAY'; recipient: string; duration: number; quorum: number }) => void;
-  sendPayment: (data: { recipient: string; amount: number; currency: 'USDC' | 'SOL' | 'PAY'; message: string }) => { txId: string };
-  createPaymentRequest: (data: { amount: number; currency: 'USDC' | 'SOL' | 'PAY'; from: string; description: string; expiration: string }) => void;
-  createGroup: (data: { name: string; description: string; requiredAmount: number; currency: 'USDC' | 'SOL' | 'PAY'; deadline?: string; visibility: 'public' | 'private'; votingThreshold: number }) => void;
-  markNotificationRead: (id: string) => void;
-  markAllNotificationsRead: () => void;
+  connectWallet: () => Promise<PublicKey>;
+  disconnectWallet: () => void;
 
-  toasts: ToastMsg[];
-  addToast: (toast: Omit<ToastMsg, 'id'>) => void;
+  /*
+   * Toast
+   */
+  toasts: Toast[];
+
+  addToast: (toast: {
+    title: string;
+    description?: string;
+    variant?: ToastVariant;
+  }) => void;
+
   removeToast: (id: string) => void;
-  liveUpdates: LiveUpdate[];
+
+  /*
+   * PayDAO
+   */
+  contribute: (
+    groupId: string,
+    amount: number,
+    currency?: Currency,
+  ) => Promise<void>;
+
+  voteOnProposal: (
+    proposalId: number,
+    vote: VoteType,
+  ) => Promise<void>;
+
+  createProposal: (
+    data: CreateProposalInput,
+  ) => Promise<Proposal>;
+
+  createGroup: (
+    data: CreateGroupInput,
+  ) => Promise<GroupData>;
+
+  /*
+   * Existing app functionality
+   */
+  sendPayment: (
+    payment: Payment,
+  ) => Promise<void>;
+
+  createPaymentRequest: (
+    request: PaymentRequest,
+  ) => Promise<void>;
 }
 
-const AppContext = createContext<AppState | undefined>(undefined);
+/* =========================================================
+   CONTEXT
+========================================================= */
 
-function loadState<T>(key: string, fallback: T): T {
+const AppContext =
+  createContext<AppState | undefined>(undefined);
+
+/* =========================================================
+   LOCAL STORAGE
+========================================================= */
+
+const STORAGE_KEYS = {
+  groups: 'paydao_groups_v2',
+  proposals: 'paydao_proposals_v2',
+  contributions: 'paydao_contributions_v2',
+  transactions: 'paydao_transactions_v2',
+  activity: 'paydao_activity_v2',
+  notifications: 'paydao_notifications_v2',
+  payments: 'paydao_payments_v2',
+  paymentRequests: 'paydao_payment_requests_v2',
+};
+
+/* =========================================================
+   STORAGE HELPERS
+========================================================= */
+
+function loadStorage<T>(
+  key: string,
+  fallback: T,
+): T {
   try {
-    const stored = localStorage.getItem(key);
-    if (stored) return JSON.parse(stored);
-  } catch { /* ignore */ }
-  return fallback;
+    const stored =
+      localStorage.getItem(key);
+
+    if (!stored) {
+      return fallback;
+    }
+
+    return JSON.parse(stored) as T;
+  } catch {
+    return fallback;
+  }
 }
 
-export function AppProvider({ children }: { children: ReactNode }) {
-  const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('paydao_logged_in') === 'true');
-  const [hasOnboarded, setHasOnboarded] = useState(() => localStorage.getItem('paydao_onboarded') === 'true');
+function saveStorage<T>(
+  key: string,
+  value: T,
+) {
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify(value),
+    );
+  } catch {
+    // Ignore storage errors.
+  }
+}
 
-  const [groups, setGroups] = useState<GroupData[]>(() => loadState('paydao_groups_v2', mockData.groups));
-  const [proposals, setProposals] = useState<Proposal[]>(() => loadState('paydao_proposals_v2', mockData.proposals));
-  const [transactions, setTransactions] = useState<Transaction[]>(() => loadState('paydao_transactions_v2', mockData.transactions));
-  const [activity, setActivity] = useState<ActivityEvent[]>(() => loadState('paydao_activity_v2', mockData.activity));
-  const [notifications, setNotifications] = useState<AppNotification[]>(() => loadState('paydao_notifications_v2', mockData.notifications));
-  const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>(() => loadState('paydao_requests_v2', mockData.paymentRequests));
-  const [payments] = useState<Payment[]>(mockData.payments);
-  const [walletAssets, setWalletAssets] = useState<WalletAsset[]>(() => loadState('paydao_wallet_v2', mockData.walletAssets));
-  const [members] = useState<Member[]>(mockData.members);
+/* =========================================================
+   WALLET HELPERS
+========================================================= */
 
-  const [toasts, setToasts] = useState<ToastMsg[]>([]);
-  const [liveUpdates, setLiveUpdates] = useState<LiveUpdate[]>([]);
-  const [user, setUser] = useState(mockData.currentUser);
-  const [stats, setStats] = useState(mockData.stats);
+function createWalletUser(
+  address: string,
+): WalletUser {
+  return {
+    walletAddress: address,
+    shortAddress: `${address.slice(
+      0,
+      4,
+    )}...${address.slice(-4)}`,
+    name: `${address.slice(
+      0,
+      4,
+    )}...${address.slice(-4)}`,
+    avatarColor: '#00d4e6',
+  };
+}
 
-  useEffect(() => { localStorage.setItem('paydao_logged_in', String(isLoggedIn)); }, [isLoggedIn]);
-  useEffect(() => { localStorage.setItem('paydao_onboarded', String(hasOnboarded)); }, [hasOnboarded]);
-  useEffect(() => { localStorage.setItem('paydao_groups_v2', JSON.stringify(groups)); }, [groups]);
-  useEffect(() => { localStorage.setItem('paydao_proposals_v2', JSON.stringify(proposals)); }, [proposals]);
-  useEffect(() => { localStorage.setItem('paydao_transactions_v2', JSON.stringify(transactions)); }, [transactions]);
-  useEffect(() => { localStorage.setItem('paydao_activity_v2', JSON.stringify(activity)); }, [activity]);
-  useEffect(() => { localStorage.setItem('paydao_notifications_v2', JSON.stringify(notifications)); }, [notifications]);
-  useEffect(() => { localStorage.setItem('paydao_requests_v2', JSON.stringify(paymentRequests)); }, [paymentRequests]);
-  useEffect(() => { localStorage.setItem('paydao_wallet_v2', JSON.stringify(walletAssets)); }, [walletAssets]);
+/* =========================================================
+   PROVIDER
+========================================================= */
 
-  const addToast = useCallback((toast: Omit<ToastMsg, 'id'>) => {
-    const id = `toast-${Date.now()}-${Math.random()}`;
-    setToasts(prev => [...prev, { ...toast, id }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
-  }, []);
+export function AppProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  /* =======================================================
+     DATA STATE
+  ======================================================= */
 
-  const removeToast = useCallback((id: string) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
+  const [groups, setGroups] =
+    useState<GroupData[]>(
+      () =>
+        loadStorage(
+          STORAGE_KEYS.groups,
+          mockData.groups ?? [],
+        ),
+    );
 
-  const login = useCallback(() => {
-    setIsLoggedIn(true);
-    addToast({ title: 'Welcome to PayDAO', description: 'Logged in as demo@paydao.app', variant: 'success' });
-  }, [addToast]);
+  const [proposals, setProposals] =
+    useState<Proposal[]>(
+      () =>
+        loadStorage(
+          STORAGE_KEYS.proposals,
+          mockData.proposals ?? [],
+        ),
+    );
 
-  const logout = useCallback(() => {
-    setIsLoggedIn(false);
-    localStorage.removeItem('paydao_logged_in');
-  }, []);
+  const [
+    contributions,
+    setContributions,
+  ] =
+    useState<Contribution[]>(
+      () =>
+        loadStorage(
+          STORAGE_KEYS.contributions,
+          mockData.contributions ?? [],
+        ),
+    );
 
-  const completeOnboarding = useCallback(() => setHasOnboarded(true), []);
+  const [
+    transactions,
+    setTransactions,
+  ] =
+    useState<Transaction[]>(
+      () =>
+        loadStorage(
+          STORAGE_KEYS.transactions,
+          mockData.transactions ?? [],
+        ),
+    );
 
-  const contribute = useCallback((groupId: string, amount: number, currency: 'USDC' | 'SOL' | 'PAY') => {
-    const newContribution: Contribution = {
-      id: `c-${Date.now()}`,
-      groupId,
-      amount,
-      currency,
-      createdAt: 'Sep 7',
-      anonymousId: `Contributor #${Math.floor(Math.random() * 900) + 100}`,
-    };
+  const [activity, setActivity] =
+    useState<ActivityEvent[]>(
+      () =>
+        loadStorage(
+          STORAGE_KEYS.activity,
+          mockData.activity ?? [],
+        ),
+    );
 
-    setGroups(prev => prev.map(g => {
-      if (g.id !== groupId) return g;
-      return {
-        ...g,
-        currentBalance: g.currentBalance + amount,
-        contributions: [newContribution, ...g.contributions],
-      };
-    }));
+  const [
+    notifications,
+    setNotifications,
+  ] =
+    useState<AppNotification[]>(
+      () =>
+        loadStorage(
+          STORAGE_KEYS.notifications,
+          mockData.notifications ?? [],
+        ),
+    );
 
-    const group = groups.find(g => g.id === groupId);
-    const groupName = group?.name || 'Group';
+  const [payments, setPayments] =
+    useState<Payment[]>(
+      () =>
+        loadStorage(
+          STORAGE_KEYS.payments,
+          mockData.payments ?? [],
+        ),
+    );
 
-    const txId = mockData.genRandomTxId();
-    const newTx: Transaction = {
-      id: txId, shortId: `${txId.slice(0, 4)}...${txId.slice(4, 8)}`,
-      type: 'contribution', from: 'Anonymous', to: groupName,
-      amount, currency, network: 'Solana Demo', status: 'confirmed',
-      timestamp: `Sep 7, 2026 ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`,
-      fee: 0.02, block: 284000000 + Math.floor(Math.random() * 100000),
-      signature: mockData.genRandomTxId() + mockData.genRandomTxId(),
-    };
-    setTransactions(prev => [newTx, ...prev]);
+  const [
+    paymentRequests,
+    setPaymentRequests,
+  ] =
+    useState<PaymentRequest[]>(
+      () =>
+        loadStorage(
+          STORAGE_KEYS.paymentRequests,
+          mockData.paymentRequests ?? [],
+        ),
+    );
 
-    const newActivity: ActivityEvent = {
-      id: `act-${Date.now()}`,
-      user: 'Anonymous', userColor: '#00d4e6',
-      action: 'contributed', detail: `$${amount} ${currency} to ${groupName}`,
-      timestamp: 'Just now', timeAgo: 'Just now', status: 'completed',
-      icon: 'arrow-down', anonymous: true,
-    };
-    setActivity(prev => [newActivity, ...prev]);
+  /*
+   * These are still mock/static for now.
+   */
+  const [members] =
+    useState<Member[]>(
+      mockData.members ?? [],
+    );
 
-    setUser(prev => ({ ...prev, personalBalance: prev.personalBalance - amount }));
+  const [walletAssets] =
+    useState<WalletAsset[]>(
+      mockData.walletAssets ?? [],
+    );
 
-    addToast({ title: 'Contribution confirmed', description: `$${amount} ${currency} contributed to ${groupName}`, variant: 'success' });
-  }, [groups, addToast]);
+  /* =======================================================
+     WALLET STATE
+  ======================================================= */
 
-  const voteOnProposal = useCallback((proposalId: number, vote: VoteType) => {
-    setProposals(prev => prev.map(p => {
-      if (p.id !== proposalId || p.userVote) return p;
-      const newVotes = { ...p.votes };
-      newVotes[vote] = newVotes[vote] + 1;
-      return { ...p, votes: newVotes, userVote: vote };
-    }));
+  const [
+    walletAddress,
+    setWalletAddress,
+  ] =
+    useState<string | null>(null);
 
-    addToast({ title: 'Vote recorded privately', description: 'Your vote has been recorded. Individual votes are never publicly associated with a wallet or identity.', variant: 'success' });
-  }, [addToast]);
+  const [
+    walletLoading,
+    setWalletLoading,
+  ] =
+    useState(false);
 
-  const createProposal = useCallback((data: { groupId: string; title: string; description: string; amount: number; currency: 'USDC' | 'SOL' | 'PAY'; recipient: string; duration: number; quorum: number }) => {
-    const newId = Math.max(...proposals.map(p => p.id)) + 1;
-    const newProposal: Proposal = {
-      id: newId, groupId: data.groupId,
-      title: data.title, description: data.description,
-      amount: data.amount, currency: data.currency, recipient: data.recipient,
-      status: 'voting', votes: { yes: 0, no: 0, abstain: 0 },
-      totalMembers: 24, quorum: data.quorum,
-      deadline: `Sep ${8 + newId}, 2026`, hoursLeft: data.duration,
-      createdAt: 'Sep 7, 2026',
-    };
-    setProposals(prev => [newProposal, ...prev]);
-    setGroups(prev => prev.map(g => g.id === data.groupId ? { ...g, activeProposals: g.activeProposals + 1 } : g));
-    setStats(prev => ({ ...prev, activeProposals: prev.activeProposals + 1 }));
+  /*
+   * Wallet is the identity.
+   */
+  const user =
+    walletAddress
+      ? createWalletUser(walletAddress)
+      : null;
 
-    const newActivity: ActivityEvent = {
-      id: `act-${Date.now()}`, user: user.name, userColor: user.avatarColor,
-      action: 'created proposal', detail: `#${newId} ${data.title}`,
-      timestamp: 'Just now', timeAgo: 'Just now', status: 'info', icon: 'file-text',
-    };
-    setActivity(prev => [newActivity, ...prev]);
+  const isWalletConnected =
+    !!walletAddress;
 
-    setNotifications(prev => [
-      { id: `n-${Date.now()}`, title: `Proposal #${newId} created`, message: 'Your proposal is now open for private voting', type: 'proposal', read: false, timestamp: 'Just now', timeAgo: 'Just now' },
-      ...prev,
-    ]);
+  /* =======================================================
+     TOASTS
+  ======================================================= */
 
-    addToast({ title: 'Proposal created', description: `Proposal #${newId} is now open for voting`, variant: 'success' });
-  }, [proposals, user, addToast]);
+  const [toasts, setToasts] =
+    useState<Toast[]>([]);
 
-  const sendPayment = useCallback((data: { recipient: string; amount: number; currency: 'USDC' | 'SOL' | 'PAY'; message: string }) => {
-    const txId = mockData.genRandomTxId();
-    const newTx: Transaction = {
-      id: txId, shortId: `${txId.slice(0, 4)}...${txId.slice(4, 8)}`,
-      type: 'sent', from: user.name, to: data.recipient,
-      amount: data.amount, currency: data.currency, network: 'Solana Demo', status: 'confirmed',
-      timestamp: `Sep 7, 2026 ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`,
-      fee: 0.02, block: 284000000 + Math.floor(Math.random() * 100000),
-      signature: mockData.genRandomTxId() + mockData.genRandomTxId() + mockData.genRandomTxId(),
-    };
-    setTransactions(prev => [newTx, ...prev]);
+  /* =======================================================
+     RESTORE CONNECTED WALLET
+  ======================================================= */
 
-    const newActivity: ActivityEvent = {
-      id: `act-${Date.now()}`, user: user.name, userColor: user.avatarColor,
-      action: 'sent', detail: `$${data.amount} ${data.currency} to ${data.recipient}`,
-      timestamp: 'Just now', timeAgo: 'Just now', status: 'completed', icon: 'arrow-up',
-    };
-    setActivity(prev => [newActivity, ...prev]);
-    setStats(prev => ({ ...prev, totalTransactions: prev.totalTransactions + 1 }));
-    setUser(prev => ({ ...prev, personalBalance: prev.personalBalance - data.amount }));
-
-    addToast({ title: 'Payment sent successfully', description: `$${data.amount} ${data.currency} to ${data.recipient}`, variant: 'success' });
-    return { txId };
-  }, [user, addToast]);
-
-  const createPaymentRequest = useCallback((data: { amount: number; currency: 'USDC' | 'SOL' | 'PAY'; from: string; description: string; expiration: string }) => {
-    const newReq: PaymentRequest = {
-      id: `r-${Date.now()}`, amount: data.amount, currency: data.currency,
-      from: data.from, description: data.description, expiration: data.expiration,
-      status: 'pending', createdAt: 'Sep 7',
-    };
-    setPaymentRequests(prev => [newReq, ...prev]);
-    addToast({ title: 'Payment request generated', description: `$${data.amount} ${data.currency} from ${data.from}`, variant: 'success' });
-  }, [addToast]);
-
-  const createGroup = useCallback((data: { name: string; description: string; requiredAmount: number; currency: 'USDC' | 'SOL' | 'PAY'; deadline?: string; visibility: 'public' | 'private'; votingThreshold: number }) => {
-    const newGroup: GroupData = {
-      id: `g-${Date.now()}`,
-      name: data.name, description: data.description,
-      createdBy: user.name, createdAvatarColor: user.avatarColor,
-      requiredAmount: data.requiredAmount, currentBalance: 0,
-      currency: data.currency, deadline: data.deadline,
-      visibility: data.visibility,
-      members: ['m-0'], memberCount: 1,
-      activeProposals: 0, contributions: [],
-      governance: 'democratic', votingThreshold: data.votingThreshold,
-      createdAt: 'Sep 2026',
-    };
-    setGroups(prev => [newGroup, ...prev]);
-    setStats(prev => ({ ...prev, totalGroups: prev.totalGroups + 1 }));
-
-    const newActivity: ActivityEvent = {
-      id: `act-${Date.now()}`, user: user.name, userColor: user.avatarColor,
-      action: 'created group', detail: data.name,
-      timestamp: 'Just now', timeAgo: 'Just now', status: 'info', icon: 'users',
-    };
-    setActivity(prev => [newActivity, ...prev]);
-
-    addToast({ title: 'Group created successfully', description: data.name, variant: 'success' });
-  }, [user, addToast]);
-
-  const markNotificationRead = useCallback((id: string) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-  }, []);
-
-  const markAllNotificationsRead = useCallback(() => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    addToast({ title: 'All notifications marked as read', variant: 'info' });
-  }, [addToast]);
-
-  // Real-time simulation
   useEffect(() => {
-    if (!isLoggedIn) return;
-    const interval = setInterval(() => {
-      const events = [
-        { user: 'Anonymous', action: 'contributed', detail: `$${Math.floor(Math.random() * 500) + 50} USDC to Build Our DAO`, icon: 'arrow-down', anonymous: true },
-        { user: 'Anonymous', action: 'voted on', detail: `Proposal #${Math.floor(Math.random() * 10) + 1}`, icon: 'vote', anonymous: true },
-        { user: 'Anonymous', action: 'contributed', detail: `$${Math.floor(Math.random() * 300) + 20} to Dev Guild`, icon: 'arrow-down', anonymous: true },
-      ];
-      const event = events[Math.floor(Math.random() * events.length)];
-      const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+    let mounted = true;
 
-      const newActivity: ActivityEvent = {
-        id: `live-${Date.now()}`,
-        user: event.user, userColor: color,
-        action: event.action, detail: event.detail,
-        timestamp: 'Just now', timeAgo: 'Just now',
-        status: 'info', icon: event.icon, anonymous: event.anonymous,
-      };
+    const restoreWallet = async () => {
+      try {
+        const wallet =
+          await getConnectedWallet();
 
-      setActivity(prev => [newActivity, ...prev.slice(0, 49)]);
-      setLiveUpdates(prev => [{ id: `live-${Date.now()}`, message: `${event.user} ${event.action} ${event.detail}`, timestamp: Date.now() }, ...prev.slice(0, 9)]);
-      addToast({ title: 'Live update', description: `${event.user} ${event.action} ${event.detail}`, variant: 'live' });
-    }, 12000);
+        if (
+          mounted &&
+          wallet?.publicKey
+        ) {
+          setWalletAddress(
+            wallet.publicKey.toBase58(),
+          );
+        }
+      } catch {
+        /*
+         * Wallet not connected.
+         */
+      }
+    };
 
-    return () => clearInterval(interval);
-  }, [isLoggedIn, addToast]);
+    restoreWallet();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  /* =======================================================
+     WALLET CONNECT
+  ======================================================= */
+
+  const handleConnectWallet =
+    useCallback(async (): Promise<PublicKey> => {
+      setWalletLoading(true);
+
+      try {
+        const wallet =
+          await connectWallet();
+
+        if (!wallet?.publicKey) {
+          throw new Error(
+            'Wallet connection failed.',
+          );
+        }
+
+        const address =
+          wallet.publicKey.toBase58();
+
+        setWalletAddress(address);
+
+        return wallet.publicKey;
+      } finally {
+        setWalletLoading(false);
+      }
+    }, []);
+
+  /* =======================================================
+     WALLET DISCONNECT
+  ======================================================= */
+
+  const handleDisconnectWallet =
+    useCallback(() => {
+      setWalletAddress(null);
+    }, []);
+
+  /* =======================================================
+     PERSIST STATE
+  ======================================================= */
+
+  useEffect(() => {
+    saveStorage(
+      STORAGE_KEYS.groups,
+      groups,
+    );
+  }, [groups]);
+
+  useEffect(() => {
+    saveStorage(
+      STORAGE_KEYS.proposals,
+      proposals,
+    );
+  }, [proposals]);
+
+  useEffect(() => {
+    saveStorage(
+      STORAGE_KEYS.contributions,
+      contributions,
+    );
+  }, [contributions]);
+
+  useEffect(() => {
+    saveStorage(
+      STORAGE_KEYS.transactions,
+      transactions,
+    );
+  }, [transactions]);
+
+  useEffect(() => {
+    saveStorage(
+      STORAGE_KEYS.activity,
+      activity,
+    );
+  }, [activity]);
+
+  useEffect(() => {
+    saveStorage(
+      STORAGE_KEYS.notifications,
+      notifications,
+    );
+  }, [notifications]);
+
+  useEffect(() => {
+    saveStorage(
+      STORAGE_KEYS.payments,
+      payments,
+    );
+  }, [payments]);
+
+  useEffect(() => {
+    saveStorage(
+      STORAGE_KEYS.paymentRequests,
+      paymentRequests,
+    );
+  }, [paymentRequests]);
+
+  /* =======================================================
+     TOAST
+  ======================================================= */
+
+  const addToast =
+    useCallback(
+      ({
+        title,
+        description,
+        variant = 'info',
+      }: {
+        title: string;
+        description?: string;
+        variant?: ToastVariant;
+      }) => {
+        const id =
+          `toast-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 8)}`;
+
+        const toast: Toast = {
+          id,
+          title,
+          description,
+          variant,
+        };
+
+        setToasts(
+          previous => [
+            ...previous,
+            toast,
+          ],
+        );
+
+        window.setTimeout(() => {
+          setToasts(
+            previous =>
+              previous.filter(
+                item =>
+                  item.id !== id,
+              ),
+          );
+        }, 5000);
+      },
+      [],
+    );
+
+  const removeToast =
+    useCallback(
+      (id: string) => {
+        setToasts(
+          previous =>
+            previous.filter(
+              toast =>
+                toast.id !== id,
+            ),
+        );
+      },
+      [],
+    );
+
+  /* =======================================================
+     CONTRIBUTE
+  ======================================================= */
+
+  const contribute =
+    useCallback(
+      async (
+        groupId: string,
+        amount: number,
+        currency: Currency = 'SOL',
+      ) => {
+        if (!walletAddress) {
+          throw new Error(
+            'Connect your wallet first.',
+          );
+        }
+
+        if (amount <= 0) {
+          throw new Error(
+            'Contribution amount must be greater than zero.',
+          );
+        }
+
+        if (currency !== 'SOL') {
+          throw new Error(
+            'Only SOL contributions are currently supported on-chain.',
+          );
+        }
+
+        const group =
+          groups.find(
+            item =>
+              item.id === groupId,
+          );
+
+        if (!group) {
+          throw new Error(
+            'Group not found.',
+          );
+        }
+
+        const signature =
+          await contributeOnChain(
+            group.id,
+            amount,
+            currency,
+          );
+
+        /* -----------------------------------------------
+           Contribution
+        ------------------------------------------------ */
+
+        const contribution:
+          Contribution = {
+          id:
+            `contribution-${Date.now()}`,
+
+          groupId:
+            group.id,
+
+          amount,
+
+          currency,
+
+          createdAt:
+            new Date().toISOString(),
+
+          anonymousId:
+            `anon-${Date.now()}`,
+        };
+
+        setContributions(
+          previous => [
+            contribution,
+            ...previous,
+          ],
+        );
+
+        /* -----------------------------------------------
+           Group balance
+        ------------------------------------------------ */
+
+        setGroups(
+          previous =>
+            previous.map(item => {
+              if (
+                item.id !==
+                group.id
+              ) {
+                return item;
+              }
+
+              return {
+                ...item,
+
+                currentBalance:
+                  item.currentBalance +
+                  amount,
+
+                contributions: [
+                  contribution,
+                  ...item.contributions,
+                ],
+              };
+            }),
+        );
+
+        /* -----------------------------------------------
+           Transaction
+        ------------------------------------------------ */
+
+        const transaction:
+          Transaction = {
+          id:
+            `tx-${Date.now()}`,
+
+          shortId:
+            signature.slice(0, 8),
+
+          type:
+            'contribution',
+
+          from:
+            'Anonymous',
+
+          to:
+            group.id,
+
+          amount,
+
+          currency,
+
+          network:
+            'Solana Devnet',
+
+          status:
+            'confirmed',
+
+          timestamp:
+            new Date().toISOString(),
+
+          fee:
+            0,
+
+          block:
+            0,
+
+          signature,
+        };
+
+        setTransactions(
+          previous => [
+            transaction,
+            ...previous,
+          ],
+        );
+
+        /* -----------------------------------------------
+           Activity
+        ------------------------------------------------ */
+
+        const event:
+          ActivityEvent = {
+          id:
+            `activity-${Date.now()}`,
+
+          user:
+            'Anonymous',
+
+          userColor:
+            '#00d4e6',
+
+          action:
+            'contributed',
+
+          detail:
+            `${amount} ${currency}`,
+
+          timestamp:
+            'Just now',
+
+          timeAgo:
+            'Just now',
+
+          status:
+            'completed',
+
+          icon:
+            'wallet',
+
+          anonymous:
+            true,
+        };
+
+        setActivity(
+          previous => [
+            event,
+            ...previous,
+          ],
+        );
+
+        /* -----------------------------------------------
+           Notification
+        ------------------------------------------------ */
+
+        setNotifications(
+          previous => [
+            {
+              id:
+                `notification-${Date.now()}`,
+
+              title:
+                'Contribution successful',
+
+              message:
+                `${amount} ${currency} was contributed to ${group.name}.`,
+
+              type:
+                'group',
+
+              read:
+                false,
+
+              timestamp:
+                'Just now',
+
+              timeAgo:
+                'Just now',
+            },
+
+            ...previous,
+          ],
+        );
+
+        addToast({
+          title:
+            'Contribution successful',
+
+          description:
+            `${amount} SOL contributed to ${group.name}.`,
+
+          variant:
+            'success',
+        });
+      },
+      [
+        groups,
+        walletAddress,
+        addToast,
+      ],
+    );
+
+  /* =======================================================
+     PRIVATE VOTE
+  ======================================================= */
+
+  const voteOnProposal =
+    useCallback(
+      async (
+        proposalId: number,
+        vote: VoteType,
+      ) => {
+        if (!walletAddress) {
+          throw new Error(
+            'Connect your wallet first.',
+          );
+        }
+
+        const proposal =
+          proposals.find(
+            item =>
+              item.id ===
+              proposalId,
+          );
+
+        if (!proposal) {
+          throw new Error(
+            'Proposal not found.',
+          );
+        }
+
+        if (
+          proposal.status !==
+          'voting'
+        ) {
+          throw new Error(
+            'This proposal is no longer accepting votes.',
+          );
+        }
+
+        if (
+          !proposal.chainAddress
+        ) {
+          throw new Error(
+            'This proposal has no on-chain address.',
+          );
+        }
+
+        /*
+         * Individual vote is intentionally
+         * NOT stored in local state.
+         */
+
+        const signature =
+          await voteOnProposalOnChain({
+            groupId:
+              proposal.groupId,
+
+            proposalAddress:
+              proposal.chainAddress,
+
+            vote,
+          });
+
+        /* -----------------------------------------------
+           Private activity
+        ------------------------------------------------ */
+
+        setActivity(
+          previous => [
+            {
+              id:
+                `vote-${Date.now()}`,
+
+              user:
+                'Anonymous',
+
+              userColor:
+                '#00d4e6',
+
+              action:
+                'voted privately',
+
+              detail:
+                proposal.title,
+
+              timestamp:
+                'Just now',
+
+              timeAgo:
+                'Just now',
+
+              status:
+                'completed',
+
+              icon:
+                'check-circle',
+
+              anonymous:
+                true,
+            },
+
+            ...previous,
+          ],
+        );
+
+        /* -----------------------------------------------
+           Transaction
+        ------------------------------------------------ */
+
+        setTransactions(
+          previous => [
+            {
+              id:
+                `vote-tx-${Date.now()}`,
+
+              shortId:
+                signature.slice(0, 8),
+
+              type:
+                'sent',
+
+              from:
+                'Anonymous',
+
+              to:
+                proposal.chainAddress,
+
+              amount:
+                0,
+
+              currency:
+                'SOL',
+
+              network:
+                'Solana Devnet',
+
+              status:
+                'confirmed',
+
+              timestamp:
+                new Date().toISOString(),
+
+              fee:
+                0,
+
+              block:
+                0,
+
+              signature,
+            },
+
+            ...previous,
+          ],
+        );
+
+        /* -----------------------------------------------
+           Notification
+        ------------------------------------------------ */
+
+        setNotifications(
+          previous => [
+            {
+              id:
+                `notification-${Date.now()}`,
+
+              title:
+                'Private vote submitted',
+
+              message:
+                'Your vote was submitted successfully. Your individual choice is not displayed.',
+
+              type:
+                'proposal',
+
+              read:
+                false,
+
+              timestamp:
+                'Just now',
+
+              timeAgo:
+                'Just now',
+            },
+
+            ...previous,
+          ],
+        );
+
+        addToast({
+          title:
+            'Private vote submitted',
+
+          description:
+            'Your vote was submitted successfully.',
+
+          variant:
+            'success',
+        });
+      },
+      [
+        proposals,
+        walletAddress,
+        addToast,
+      ],
+    );
+
+  /* =======================================================
+     CREATE PROPOSAL
+  ======================================================= */
+
+  const createProposal =
+    useCallback(
+      async (
+        data: CreateProposalInput,
+      ): Promise<Proposal> => {
+        if (!walletAddress) {
+          throw new Error(
+            'Connect your wallet first.',
+          );
+        }
+
+        if (
+          !data.title.trim()
+        ) {
+          throw new Error(
+            'Proposal title is required.',
+          );
+        }
+
+        if (
+          !data.description.trim()
+        ) {
+          throw new Error(
+            'Proposal description is required.',
+          );
+        }
+
+        if (
+          data.amount <= 0
+        ) {
+          throw new Error(
+            'Proposal amount must be greater than zero.',
+          );
+        }
+
+        if (
+          data.duration <= 0
+        ) {
+          throw new Error(
+            'Voting duration must be greater than zero.',
+          );
+        }
+
+        if (
+          data.currency !== 'SOL'
+        ) {
+          throw new Error(
+            'Only SOL proposals are currently supported on-chain.',
+          );
+        }
+
+        const group =
+          groups.find(
+            item =>
+              item.id ===
+              data.groupId,
+          );
+
+        if (!group) {
+          throw new Error(
+            'Group not found.',
+          );
+        }
+
+        /* -----------------------------------------------
+           On-chain proposal
+        ------------------------------------------------ */
+
+        const chainResult =
+          await createProposalOnChain({
+            groupId:
+              group.id,
+
+            title:
+              data.title,
+
+            description:
+              data.description,
+
+            amount:
+              data.amount,
+
+            currency:
+              data.currency,
+
+            recipient:
+              data.recipient,
+
+            duration:
+              data.duration,
+          });
+
+        /* -----------------------------------------------
+           Local proposal ID
+        ------------------------------------------------ */
+
+        const newId =
+          proposals.length === 0
+            ? 1
+            : Math.max(
+              ...proposals.map(
+                item =>
+                  item.id,
+              ),
+            ) + 1;
+
+        const deadline =
+          new Date(
+            Date.now() +
+            data.duration *
+            60 *
+            60 *
+            1000,
+          ).toISOString();
+
+        /* -----------------------------------------------
+           Proposal
+        ------------------------------------------------ */
+
+        const newProposal:
+          Proposal = {
+          id:
+            newId,
+
+          groupId:
+            group.id,
+
+          chainAddress:
+            chainResult.proposalAddress,
+
+          title:
+            data.title,
+
+          description:
+            data.description,
+
+          amount:
+            data.amount,
+
+          currency:
+            data.currency,
+
+          recipient:
+            data.recipient,
+
+          status:
+            'voting',
+
+          votes: {
+            yes: 0,
+            no: 0,
+            abstain: 0,
+          },
+
+          totalMembers:
+            group.memberCount,
+
+          quorum:
+            group.votingThreshold,
+
+          deadline,
+
+          hoursLeft:
+            data.duration,
+
+          createdAt:
+            new Date().toISOString(),
+        };
+
+        setProposals(
+          previous => [
+            newProposal,
+            ...previous,
+          ],
+        );
+
+        /* -----------------------------------------------
+           Update group
+        ------------------------------------------------ */
+
+        setGroups(
+          previous =>
+            previous.map(item => {
+              if (
+                item.id !==
+                group.id
+              ) {
+                return item;
+              }
+
+              return {
+                ...item,
+
+                activeProposals:
+                  item.activeProposals +
+                  1,
+              };
+            }),
+        );
+
+        /* -----------------------------------------------
+           Activity
+        ------------------------------------------------ */
+
+        setActivity(
+          previous => [
+            {
+              id:
+                `proposal-${Date.now()}`,
+
+              user:
+                user?.name ??
+                'User',
+
+              userColor:
+                '#00d4e6',
+
+              action:
+                'created proposal',
+
+              detail:
+                data.title,
+
+              timestamp:
+                'Just now',
+
+              timeAgo:
+                'Just now',
+
+              status:
+                'completed',
+
+              icon:
+                'file-text',
+
+              anonymous:
+                false,
+            },
+
+            ...previous,
+          ],
+        );
+
+        /* -----------------------------------------------
+           Notification
+        ------------------------------------------------ */
+
+        setNotifications(
+          previous => [
+            {
+              id:
+                `notification-${Date.now()}`,
+
+              title:
+                'Proposal created',
+
+              message:
+                `"${data.title}" is now open for voting.`,
+
+              type:
+                'proposal',
+
+              read:
+                false,
+
+              timestamp:
+                'Just now',
+
+              timeAgo:
+                'Just now',
+            },
+
+            ...previous,
+          ],
+        );
+
+        /* -----------------------------------------------
+           Toast
+        ------------------------------------------------ */
+
+        addToast({
+          title:
+            'Proposal created',
+
+          description:
+            'Your proposal is now open for voting.',
+
+          variant:
+            'success',
+        });
+
+        return newProposal;
+      },
+      [
+        groups,
+        proposals,
+        user,
+        walletAddress,
+        addToast,
+      ],
+    );
+
+  /* =======================================================
+     CREATE GROUP
+  ======================================================= */
+
+  const createGroup =
+    useCallback(
+      async (
+        data: CreateGroupInput,
+      ): Promise<GroupData> => {
+        if (!walletAddress) {
+          throw new Error(
+            'Connect your wallet first.',
+          );
+        }
+
+        if (
+          !data.name.trim()
+        ) {
+          throw new Error(
+            'Group name is required.',
+          );
+        }
+
+        if (
+          !data.description.trim()
+        ) {
+          throw new Error(
+            'Group description is required.',
+          );
+        }
+
+        if (
+          data.requiredAmount <= 0
+        ) {
+          throw new Error(
+            'Required amount must be greater than zero.',
+          );
+        }
+
+        if (
+          data.votingThreshold < 1 ||
+          data.votingThreshold > 100
+        ) {
+          throw new Error(
+            'Voting threshold must be between 1 and 100.',
+          );
+        }
+
+        if (
+          data.currency !== 'SOL'
+        ) {
+          throw new Error(
+            'Only SOL groups are currently supported on-chain.',
+          );
+        }
+
+        /* -----------------------------------------------
+           Create on-chain
+        ------------------------------------------------ */
+
+        const chainResult =
+          await createGroupOnChain({
+            name:
+              data.name,
+
+            description:
+              data.description,
+
+            targetAmount:
+              data.requiredAmount,
+
+            currency:
+              data.currency,
+
+            visibility:
+              data.visibility,
+
+            threshold:
+              data.votingThreshold,
+
+            deadline:
+              data.deadline ?? '',
+          });
+
+        /*
+         * PDA is the real group ID.
+         */
+
+        const groupId =
+          chainResult.groupAddress;
+
+        /* -----------------------------------------------
+           Local group
+        ------------------------------------------------ */
+
+        const newGroup:
+          GroupData = {
+          id:
+            groupId,
+
+          name:
+            data.name,
+
+          description:
+            data.description,
+
+          createdBy:
+            user?.name ??
+            'Anonymous',
+
+          createdAvatarColor:
+            '#00d4e6',
+
+          requiredAmount:
+            data.requiredAmount,
+
+          currentBalance:
+            0,
+
+          currency:
+            data.currency,
+
+          deadline:
+            data.deadline,
+
+          visibility:
+            data.visibility,
+
+          members: [
+            user?.name ??
+            'Anonymous',
+          ],
+
+          memberCount:
+            1,
+
+          activeProposals:
+            0,
+
+          contributions:
+            [],
+
+          governance:
+            data.governance,
+
+          votingThreshold:
+            data.votingThreshold,
+
+          createdAt:
+            new Date().toISOString(),
+        };
+
+        setGroups(
+          previous => [
+            newGroup,
+            ...previous,
+          ],
+        );
+
+        /* -----------------------------------------------
+           Activity
+        ------------------------------------------------ */
+
+        setActivity(
+          previous => [
+            {
+              id:
+                `group-${Date.now()}`,
+
+              user:
+                user?.name ??
+                'Anonymous',
+
+              userColor:
+                '#00d4e6',
+
+              action:
+                'created a group',
+
+              detail:
+                data.name,
+
+              timestamp:
+                'Just now',
+
+              timeAgo:
+                'Just now',
+
+              status:
+                'completed',
+
+              icon:
+                'users',
+
+              anonymous:
+                false,
+            },
+
+            ...previous,
+          ],
+        );
+
+        /* -----------------------------------------------
+           Notification
+        ------------------------------------------------ */
+
+        setNotifications(
+          previous => [
+            {
+              id:
+                `notification-${Date.now()}`,
+
+              title:
+                'Group created',
+
+              message:
+                `${data.name} was created successfully.`,
+
+              type:
+                'group',
+
+              read:
+                false,
+
+              timestamp:
+                'Just now',
+
+              timeAgo:
+                'Just now',
+            },
+
+            ...previous,
+          ],
+        );
+
+        /* -----------------------------------------------
+           Toast
+        ------------------------------------------------ */
+
+        addToast({
+          title:
+            'Group created',
+
+          description:
+            'Your PayDAO group is now live on-chain.',
+
+          variant:
+            'success',
+        });
+
+        return newGroup;
+      },
+      [
+        user,
+        walletAddress,
+        addToast,
+      ],
+    );
+
+  /* =======================================================
+     SEND PAYMENT
+  ======================================================= */
+
+  const sendPayment =
+    useCallback(
+      async (
+        payment: Payment,
+      ) => {
+        if (!walletAddress) {
+          throw new Error(
+            'Connect your wallet first.',
+          );
+        }
+
+        setPayments(
+          previous => [
+            payment,
+            ...previous,
+          ],
+        );
+
+        setActivity(
+          previous => [
+            {
+              id:
+                `payment-${Date.now()}`,
+
+              user:
+                user?.name ??
+                'Anonymous',
+
+              userColor:
+                '#00d4e6',
+
+              action:
+                'sent payment',
+
+              detail:
+                `${payment.amount} ${payment.currency}`,
+
+              timestamp:
+                'Just now',
+
+              timeAgo:
+                'Just now',
+
+              status:
+                payment.status,
+
+              icon:
+                'send',
+
+              anonymous:
+                false,
+            },
+
+            ...previous,
+          ],
+        );
+      },
+      [
+        user,
+        walletAddress,
+      ],
+    );
+
+  /* =======================================================
+     CREATE PAYMENT REQUEST
+  ======================================================= */
+
+  const createPaymentRequest =
+    useCallback(
+      async (
+        request: PaymentRequest,
+      ) => {
+        if (!walletAddress) {
+          throw new Error(
+            'Connect your wallet first.',
+          );
+        }
+
+        setPaymentRequests(
+          previous => [
+            request,
+            ...previous,
+          ],
+        );
+      },
+      [walletAddress],
+    );
+
+  /* =======================================================
+     CONTEXT VALUE
+  ======================================================= */
+
+  const value: AppState = {
+    groups,
+    proposals,
+    contributions,
+    transactions,
+    activity,
+    notifications,
+    payments,
+    paymentRequests,
+    members,
+    walletAssets,
+
+    /*
+     * Wallet identity
+     */
+    user,
+    walletAddress,
+    isWalletConnected,
+    walletLoading,
+
+    connectWallet:
+      handleConnectWallet,
+
+    disconnectWallet:
+      handleDisconnectWallet,
+
+    /*
+     * Toast
+     */
+    toasts,
+    addToast,
+    removeToast,
+
+    /*
+     * PayDAO
+     */
+    contribute,
+    voteOnProposal,
+    createProposal,
+    createGroup,
+
+    /*
+     * Existing functionality
+     */
+    sendPayment,
+    createPaymentRequest,
+  };
 
   return (
-    <AppContext.Provider value={{
-      isLoggedIn, hasOnboarded, login, logout, completeOnboarding,
-      groups, proposals, transactions, activity, notifications, paymentRequests, payments, walletAssets, members,
-      user, stats,
-      contribute, voteOnProposal, createProposal, sendPayment, createPaymentRequest, createGroup,
-      markNotificationRead, markAllNotificationsRead,
-      toasts, addToast, removeToast, liveUpdates,
-    }}>
+    <AppContext.Provider
+      value={value}
+    >
       {children}
     </AppContext.Provider>
   );
 }
 
-const COLORS = ['#00d4e6', '#00e676', '#ff2e9a', '#ffd600', '#ff8c00', '#4d7cff'];
+/* =========================================================
+   USE APP
+========================================================= */
 
-export function useApp() {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useApp must be used within AppProvider');
-  return ctx;
+export function useApp(): AppState {
+  const context =
+    useContext(AppContext);
+
+  if (!context) {
+    throw new Error(
+      'useApp must be used inside AppProvider',
+    );
+  }
+
+  return context;
 }

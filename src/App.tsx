@@ -26,12 +26,10 @@ function ScrollToTop() {
 }
 
 function ProtectedRoutes() {
-  const { isLoggedIn, hasOnboarded } = useApp();
+  // const { isLoggedIn, hasOnboarded } = useApp();
   const location = useLocation();
 
-  if (!isLoggedIn) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
+
 
   if (!hasOnboarded && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />;

@@ -1,32 +1,37 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Check, ArrowDownLeft, Target } from 'lucide-react';
-import { PixelModal } from '@/components/retro/PixelModal';
 import { PixelButton } from '@/components/retro/PixelButton';
-import type { GroupData, Currency } from '@/types';
+import { PixelModal } from '@/components/retro/PixelModal';
+import type { Currency, GroupData } from '@/types';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowDownLeft, Check, Target } from 'lucide-react';
+import { useState } from 'react';
 
 interface DonateModalProps {
   open: boolean;
   onClose: () => void;
   group: GroupData;
-  onContribute: (groupId: string, amount: number, currency: Currency) => void;
+  onContribute: (groupId: string, amount: number, currency: Currency) => Promise<void>;
 }
 
 export function DonateModal({ open, onClose, group, onContribute }: DonateModalProps) {
   const [step, setStep] = useState<'form' | 'processing' | 'success'>('form');
   const [amount, setAmount] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [currency, setCurrency] = useState<Currency>(group.currency || 'USDC');
 
   const pct = Math.min(100, (group.currentBalance / group.requiredAmount) * 100);
   const remaining = Math.max(0, group.requiredAmount - group.currentBalance);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStep('processing');
-    setTimeout(() => {
-      onContribute(group.id, parseFloat(amount), currency);
+    setError(null);
+    try {
+      await onContribute(group.id, parseFloat(amount), currency);
       setStep('success');
-    }, 2000);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Contribution failed.');
+      setStep('form');
+    }
   };
 
   const reset = () => { setStep('form'); setAmount(''); onClose(); };
@@ -73,6 +78,7 @@ export function DonateModal({ open, onClose, group, onContribute }: DonateModalP
               <Target className="w-4 h-4 text-cyan shrink-0" />
               <p className="text-xs text-txsec">Your contribution will be shown as "Anonymous contributor". Your wallet address will not be displayed publicly.</p>
             </div>
+            {error && <p role="alert" className="text-xs text-red">{error}</p>}
 
             <div className="flex gap-3">
               <PixelButton variant="ghost" className="flex-1" onClick={onClose}>Cancel</PixelButton>

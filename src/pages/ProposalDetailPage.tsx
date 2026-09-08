@@ -1,11 +1,11 @@
-import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronRight, Check, ThumbsUp, ThumbsDown, Minus, Clock, AlertCircle, ArrowLeft, Shield, Vote as VoteIcon } from 'lucide-react';
-import { useApp } from '@/store/AppContext';
-import { PixelCard, PixelButton, StatusBadge } from '@/components/retro';
+import { PixelButton, PixelCard, StatusBadge } from '@/components/retro';
 import { ConfirmModal } from '@/components/retro/PixelModal';
+import { useApp } from '@/store/AppContext';
 import type { VoteType } from '@/types';
+import { AnimatePresence, motion } from 'framer-motion';
+import { AlertCircle, ArrowLeft, Check, Clock, Minus, Shield, ThumbsDown, ThumbsUp } from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 
 export function ProposalDetailPage() {
   const { id } = useParams();
@@ -13,6 +13,7 @@ export function ProposalDetailPage() {
   const { proposals, groups, voteOnProposal } = useApp();
   const [voteModal, setVoteModal] = useState<{ open: boolean; vote: VoteType | null }>({ open: false, vote: null });
   const [voting, setVoting] = useState(false);
+  const [voteError, setVoteError] = useState<string | null>(null);
 
   const proposal = proposals.find(p => p.id === parseInt(id || '1'));
   if (!proposal) {
@@ -31,14 +32,18 @@ export function ProposalDetailPage() {
   const noPct = Math.round((proposal.votes.no / proposal.totalMembers) * 100);
   const absPct = Math.round((proposal.votes.abstain / proposal.totalMembers) * 100);
 
-  const handleVote = () => {
+  const handleVote = async () => {
     if (!voteModal.vote) return;
     setVoting(true);
-    setTimeout(() => {
-      voteOnProposal(proposal.id, voteModal.vote!);
+    setVoteError(null);
+    try {
+      await voteOnProposal(proposal.id, voteModal.vote);
       setVoting(false);
       setVoteModal({ open: false, vote: null });
-    }, 1500);
+    } catch (error) {
+      setVoting(false);
+      setVoteError(error instanceof Error ? error.message : 'Private vote was not submitted.');
+    }
   };
 
   return (
@@ -115,6 +120,7 @@ export function ProposalDetailPage() {
           <PixelCard className="sticky top-20">
             <h3 className="text-sm font-semibold text-txprim mb-1">Cast Your Vote</h3>
             <p className="text-xs text-txdim mb-4">Your vote is private and anonymous.</p>
+            {voteError && <p role="alert" className="text-xs text-yellow mb-3">{voteError}</p>}
 
             <AnimatePresence mode="wait">
               {proposal.userVote ? (

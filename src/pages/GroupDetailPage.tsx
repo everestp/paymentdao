@@ -1,13 +1,13 @@
-import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Target, Clock, FileText, Plus, ChevronRight, Check, ThumbsUp, ThumbsDown, Minus, ArrowDownLeft, Radio, Shield } from 'lucide-react';
-import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { useApp } from '@/store/AppContext';
-import { PixelCard, PixelButton, StatusBadge, PixelAvatar } from '@/components/retro';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { DonateModal } from '@/components/modals/DonateModal';
 import { CreateProposalModal } from '@/components/modals/CreateProposalModal';
+import { DonateModal } from '@/components/modals/DonateModal';
+import { PixelAvatar, PixelButton, PixelCard, StatusBadge } from '@/components/retro';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { mockData } from '@/data/mockData';
+import { useApp } from '@/store/AppContext';
+import { ArrowDownLeft, ArrowLeft, Check, ChevronRight, Clock, FileText, Minus, Plus, Radio, Shield, Target, ThumbsDown, ThumbsUp, Users } from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 const iconMap: Record<string, typeof Check> = {
   'arrow-up': ArrowDownLeft, 'arrow-down': ArrowDownLeft, 'file-text': FileText,
@@ -247,7 +247,7 @@ export function GroupDetailPage() {
       </Tabs>
 
       <DonateModal open={showDonate} onClose={() => setShowDonate(false)} group={group} onContribute={contribute} />
-      <CreateProposalModal open={showCreateProposal} onClose={() => setShowCreateProposal(false)} groupId={group.id} groupName={group.name} onCreate={(data) => { createProposal({ ...data, groupId: group.id }); setShowCreateProposal(false); }} />
+      <CreateProposalModal open={showCreateProposal} onClose={() => setShowCreateProposal(false)} groupId={group.id} groupName={group.name} onCreate={async (data) => { await createProposal({ ...data, groupId: group.id }); setShowCreateProposal(false); }} />
     </div>
   );
 }

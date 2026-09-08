@@ -9,7 +9,7 @@ import { PixelCard } from '@/components/retro/PixelCard';
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useApp();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -18,18 +18,11 @@ export function LoginPage() {
   const [error, setError] = useState('');
 
   const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    setTimeout(() => {
-      if (email && password) { login(); navigate('/dashboard'); }
-      else { setError('Please enter email and password'); setLoading(false); }
-    }, 800);
+    navigate("/dashboard")
   };
 
   const handleDemoLogin = () => {
-    setLoading(true);
-    setTimeout(() => { login(); navigate('/dashboard'); }, 600);
+     navigate("/dashboard")
   };
 
   const fillDemo = () => { setEmail(DEMO_CREDENTIALS.email); setPassword(DEMO_CREDENTIALS.password); };

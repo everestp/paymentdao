@@ -1,44 +1,48 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Users, Target } from 'lucide-react';
-import { PixelModal } from '@/components/retro/PixelModal';
 import { PixelButton } from '@/components/retro/PixelButton';
+import { PixelModal } from '@/components/retro/PixelModal';
 import type { Currency } from '@/types';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Check, Target, Users } from 'lucide-react';
+import { useState } from 'react';
 
 interface CreateGroupModalProps {
   open: boolean;
   onClose: () => void;
-  onCreate: (data: { name: string; description: string; requiredAmount: number; currency: Currency; deadline?: string; visibility: 'public' | 'private'; votingThreshold: number }) => void;
+  onCreate: (data: { name: string; description: string; requiredAmount: number; currency: Currency; deadline?: string; visibility: 'public' | 'private'; votingThreshold: number }) => Promise<void>;
 }
 
 export function CreateGroupModal({ open, onClose, onCreate }: CreateGroupModalProps) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: '', description: '', requiredAmount: '', currency: 'USDC' as Currency,
     deadline: '', visibility: 'public' as 'public' | 'private', votingThreshold: '60',
   });
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.name || !form.requiredAmount) return;
+
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    setError(null);
+
+    try {
+      await onCreate({
+        name: form.name,
+        description: form.description || 'A collaborative funding pool.',
+        requiredAmount: parseFloat(form.requiredAmount),
+        currency: form.currency,
+        deadline: form.deadline || undefined,
+        visibility: form.visibility,
+        votingThreshold: parseInt(form.votingThreshold, 10),
+      });
       setSuccess(true);
-      setTimeout(() => {
-        onCreate({
-          name: form.name,
-          description: form.description || 'A collaborative funding pool.',
-          requiredAmount: parseFloat(form.requiredAmount),
-          currency: form.currency,
-          deadline: form.deadline || undefined,
-          visibility: form.visibility,
-          votingThreshold: parseInt(form.votingThreshold),
-        });
-        setSuccess(false);
-        setForm({ name: '', description: '', requiredAmount: '', currency: 'USDC', deadline: '', visibility: 'public', votingThreshold: '60' });
-      }, 1200);
-    }, 1500);
+      setForm({ name: '', description: '', requiredAmount: '', currency: 'USDC', deadline: '', visibility: 'public', votingThreshold: '60' });
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Unable to create group.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -97,6 +101,7 @@ export function CreateGroupModal({ open, onClose, onCreate }: CreateGroupModalPr
               <Target className="w-4 h-4 text-cyan shrink-0 mt-0.5" />
               <p className="text-xs text-txsec">Anyone can contribute to this group. The creator does not have admin-only control — the group operates collaboratively.</p>
             </div>
+            {error && <p role="alert" className="text-xs text-red">{error}</p>}
             <div className="flex gap-3 pt-2">
               <PixelButton variant="ghost" className="flex-1" onClick={onClose}>Cancel</PixelButton>
               <PixelButton variant="primary" className="flex-1" onClick={handleSubmit} disabled={loading || !form.name || !form.requiredAmount}>

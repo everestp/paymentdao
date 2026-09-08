@@ -1,43 +1,44 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Check, FileText, Shield } from 'lucide-react';
-import { PixelModal } from '@/components/retro/PixelModal';
 import { PixelButton } from '@/components/retro/PixelButton';
+import { PixelModal } from '@/components/retro/PixelModal';
 import type { Currency } from '@/types';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Check, FileText, Shield } from 'lucide-react';
+import { useState } from 'react';
 
 interface CreateProposalModalProps {
   open: boolean;
   onClose: () => void;
   groupId: string;
   groupName: string;
-  onCreate: (data: { groupId: string; title: string; description: string; amount: number; currency: Currency; recipient: string; duration: number; quorum: number }) => void;
+  onCreate: (data: { groupId: string; title: string; description: string; amount: number; currency: Currency; recipient: string; duration: number; quorum: number }) => Promise<void>;
 }
 
 export function CreateProposalModal({ open, onClose, groupId, groupName, onCreate }: CreateProposalModalProps) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
-    title: '', description: '', amount: '', currency: 'USDC' as Currency,
+    title: '', description: '', amount: '', currency: 'SOL' as Currency,
     recipient: '', duration: '48', quorum: '50',
   });
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.title || !form.amount) return;
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    setError(null);
+    try {
+      await onCreate({
+        groupId, title: form.title, description: form.description,
+        amount: parseFloat(form.amount), currency: form.currency,
+        recipient: form.recipient, duration: parseInt(form.duration, 10), quorum: parseInt(form.quorum, 10),
+      });
       setSuccess(true);
-      setTimeout(() => {
-        onCreate({
-          groupId, title: form.title, description: form.description,
-          amount: parseFloat(form.amount), currency: form.currency,
-          recipient: form.recipient || 'Group Fund',
-          duration: parseInt(form.duration), quorum: parseInt(form.quorum),
-        });
-        setSuccess(false);
-        setForm({ title: '', description: '', amount: '', currency: 'USDC', recipient: '', duration: '48', quorum: '50' });
-      }, 1200);
-    }, 1500);
+      setForm({ title: '', description: '', amount: '', currency: 'SOL', recipient: '', duration: '48', quorum: '50' });
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Proposal creation failed.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -93,6 +94,7 @@ export function CreateProposalModal({ open, onClose, groupId, groupName, onCreat
               <Shield className="w-4 h-4 shrink-0 mt-0.5" style={{ color: '#b14dff' }} />
               <p className="text-xs text-txsec">All votes are private. Individual votes are never publicly associated with a wallet or identity. Only aggregate results are shown.</p>
             </div>
+            {error && <p role="alert" className="text-xs text-red">{error}</p>}
             <div className="flex gap-3 pt-2">
               <PixelButton variant="ghost" className="flex-1" onClick={onClose}>Cancel</PixelButton>
               <PixelButton variant="primary" className="flex-1" onClick={handleSubmit} disabled={loading || !form.title || !form.amount}>
