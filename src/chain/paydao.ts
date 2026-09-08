@@ -496,6 +496,7 @@ export type PrivateVote =
 
 export interface OnChainProposal {
   address: string;
+  group: string;
 
   id?: number | string;
 
@@ -504,6 +505,7 @@ export interface OnChainProposal {
 
   amount?: number;
   amountLamports?: string;
+  amountSol?: number;
 
   proposer?: string;
   recipient?: string;
@@ -515,12 +517,44 @@ export interface OnChainProposal {
 
   status?: string;
 
-  createdAt?: number;
-  deadline?: number;
+  createdAt?: number | string;
+  deadline?: number | string;
 
   executed?: boolean;
+
+  raw?: unknown;
 }
 
+function getPublicKeyString(value: unknown): string {
+  if (!value) return "";
+
+  if (value instanceof PublicKey) {
+    return value.toBase58();
+  }
+
+  if (typeof value === "string") {
+    try {
+      return new PublicKey(value).toBase58();
+    } catch {
+      return "";
+    }
+  }
+
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "toBase58" in value &&
+    typeof (value as any).toBase58 === "function"
+  ) {
+    try {
+      return (value as any).toBase58();
+    } catch {
+      return "";
+    }
+  }
+
+  return "";
+}
 /* ============================================================
  * ON-CHAIN GROUP
  * ========================================================== */
@@ -1601,30 +1635,124 @@ export async function fetchAllGroups(): Promise<any[]> {
 
 export async function fetchProposal(
   proposalAddress: string,
-): Promise<any> {
-  const program =
-    getProgram();
+): Promise<OnChainProposal> {
+  const program = getProgram();
 
-  let proposal: PublicKey;
+  const proposalPublicKey = new PublicKey(proposalAddress);
 
-  try {
-    proposal =
-      new PublicKey(
-        proposalAddress,
-      );
-  } catch {
-    throw new Error(
-      "Invalid Solana proposal address.",
-    );
-  }
-
-  return (
+  const account = await (
     program.account as any
-  ).proposal.fetch(
-    proposal,
-  );
-}
+  ).proposal.fetch(proposalPublicKey);
 
+  const raw = account as Record<string, unknown>;
+
+  const groupAddress = getPublicKeyString(
+    raw.group ??
+    raw.groupId ??
+    raw.groupAddress ??
+    raw.group_address,
+  );
+
+  console.log("========== PROPOSAL ==========");
+  console.log("Proposal PDA:", proposalPublicKey.toBase58());
+  console.log("Raw proposal:", raw);
+  console.log("Group PDA:", groupAddress);
+  console.log("==============================");
+
+  return {
+    address: proposalPublicKey.toBase58(),
+
+    group: groupAddress,
+
+    id:
+      raw.id ??
+      raw.proposalId ??
+      raw.proposal_id,
+
+    title: String(
+      raw.title ?? "",
+    ),
+
+    description: String(
+      raw.description ?? "",
+    ),
+
+    amountLamports: toStringValue(
+      raw.amount ??
+      raw.amountLamports ??
+      raw.amount_lamports ??
+      0,
+    ),
+
+    amount: toNumber(
+      raw.amount ??
+      raw.amountLamports ??
+      0,
+    ),
+
+    proposer: getPublicKeyString(
+      raw.proposer ??
+      raw.creator ??
+      raw.author,
+    ),
+
+    recipient: getPublicKeyString(
+      raw.recipient ??
+      raw.recipientWallet ??
+      raw.recipient_wallet,
+    ),
+
+    yesVotes: toNumber(
+      raw.yesVotes ??
+      raw.yes_votes ??
+      raw.yes ??
+      0,
+    ),
+
+    noVotes: toNumber(
+      raw.noVotes ??
+      raw.no_votes ??
+      raw.no ??
+      0,
+    ),
+
+    abstainVotes: toNumber(
+      raw.abstainVotes ??
+      raw.abstain_votes ??
+      raw.abstain ??
+      0,
+    ),
+
+    voterCount: toNumber(
+      raw.voterCount ??
+      raw.voter_count ??
+      0,
+    ),
+
+    status: String(
+      raw.status ?? "",
+    ),
+
+    createdAt: toStringValue(
+      raw.createdAt ??
+      raw.created_at ??
+      0,
+    ),
+
+    deadline: toStringValue(
+      raw.deadline ??
+      raw.votingDeadline ??
+      raw.voting_deadline ??
+      0,
+    ),
+
+    executed: Boolean(
+      raw.executed ?? false,
+    ),
+
+    raw,
+  };
+}
 /* ============================================================
  * FETCH ALL PROPOSALS
  * ========================================================== */
@@ -2131,24 +2259,6 @@ function lamportsToSol(
  * PUBLIC KEY -> STRING
  * ---------------------------------------------------------- */
 
-function getPublicKeyString(
-  value: unknown,
-): string {
-  if (
-    value instanceof PublicKey
-  ) {
-    return value.toBase58();
-  }
-
-  if (
-    value === undefined ||
-    value === null
-  ) {
-    return "";
-  }
-
-  return String(value);
-}
 
 /* ------------------------------------------------------------
  * PROPOSAL STATUS
@@ -2412,4 +2522,215 @@ export async function fetchGroupMembersOnChain(
   }
 
   return result;
+}
+/* ============================================================
+ * GET PROPOSAL VOTE RECEIPT
+ *
+ * Checks whether a wallet has already voted on a proposal.
+ *
+ * PDA:
+ *
+ * ["vote", proposal, voter]
+ *
+ * Returns:
+ *   null  -> user has NOT voted
+ *   data  -> user HAS voted
+ * ========================================================== */
+
+export async function getProposalVoteReceipt(
+  proposalAddress: string,
+  voterAddress?: string,
+): Promise<{
+  address: string;
+  proposal: string;
+  voter: string;
+  vote: "yes" | "no" | "abstain";
+  voteValue: number;
+  raw: unknown;
+} | null> {
+  /* ----------------------------------------------------------
+   * PROPOSAL
+   * -------------------------------------------------------- */
+
+  let proposal: PublicKey;
+
+  try {
+    proposal =
+      new PublicKey(
+        proposalAddress,
+      );
+  } catch {
+    throw new Error(
+      "Invalid Solana proposal address.",
+    );
+  }
+
+  /* ----------------------------------------------------------
+   * VOTER
+   *
+   * If voterAddress is not supplied,
+   * use the currently connected wallet.
+   * -------------------------------------------------------- */
+
+  let voter: PublicKey;
+
+  if (voterAddress) {
+    try {
+      voter =
+        new PublicKey(
+          voterAddress,
+        );
+    } catch {
+      throw new Error(
+        "Invalid voter wallet address.",
+      );
+    }
+  } else {
+    voter =
+      await getConnectedWallet();
+  }
+
+  /* ----------------------------------------------------------
+   * VOTE RECEIPT PDA
+   *
+   * ["vote", proposal, voter]
+   * -------------------------------------------------------- */
+
+  const [voteReceipt] =
+    deriveVoteReceiptPda(
+      proposal,
+      voter,
+    );
+
+  /* ----------------------------------------------------------
+   * PROGRAM
+   * -------------------------------------------------------- */
+
+  const program =
+    getProgram();
+
+  const voteReceiptAccount =
+    (program.account as any)
+      .voteReceipt;
+
+  /* ----------------------------------------------------------
+   * CHECK IDL ACCOUNT
+   * -------------------------------------------------------- */
+
+  if (!voteReceiptAccount) {
+    throw new Error(
+      'Anchor does not expose "voteReceipt". Check the account name in your IDL.',
+    );
+  }
+
+  /* ----------------------------------------------------------
+   * FETCH
+   *
+   * If account doesn't exist, the user has not voted.
+   * -------------------------------------------------------- */
+
+  try {
+    const data =
+      await voteReceiptAccount.fetch(
+        voteReceipt,
+      );
+
+    const raw =
+      data as any;
+
+    /* --------------------------------------------------------
+     * VOTE VALUE
+     *
+     * YES     = 0
+     * NO      = 1
+     * ABSTAIN = 2
+     * ------------------------------------------------------ */
+
+    const voteValue =
+      toNumber(
+        raw.vote ??
+          raw.voteValue ??
+          raw.vote_value ??
+          0,
+      );
+
+    const vote =
+      voteValue === 0
+        ? "yes"
+        : voteValue === 1
+          ? "no"
+          : "abstain";
+
+    return {
+      address:
+        voteReceipt.toBase58(),
+
+      proposal:
+        proposal.toBase58(),
+
+      voter:
+        voter.toBase58(),
+
+      vote,
+
+      voteValue,
+
+      raw,
+    };
+  } catch (error: any) {
+    /*
+     * Account doesn't exist.
+     *
+     * This means the wallet has NOT voted.
+     */
+
+    const message =
+      error?.message ??
+      String(error);
+
+    if (
+      message.includes(
+        "Account does not exist",
+      ) ||
+      message.includes(
+        "Account does not exist or has no data",
+      ) ||
+      message.includes(
+        "AccountNotFound",
+      )
+    ) {
+      return null;
+    }
+
+    /*
+     * Some Anchor versions throw when
+     * fetch() cannot find the account.
+     *
+     * Check directly on Solana before
+     * deciding it is a real error.
+     */
+
+    try {
+      const accountInfo =
+        await program.provider.connection.getAccountInfo(
+          voteReceipt,
+          COMMITMENT,
+        );
+
+      if (!accountInfo) {
+        return null;
+      }
+    } catch {
+      // Ignore secondary RPC check.
+    }
+
+    console.error(
+      "Failed to fetch vote receipt:",
+      error,
+    );
+
+    throw new Error(
+      `Failed to fetch vote receipt: ${message}`,
+    );
+  }
 }

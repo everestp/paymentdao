@@ -1,3 +1,4 @@
+
 import { useEffect } from "react";
 import {
   BrowserRouter,
@@ -7,8 +8,16 @@ import {
   useLocation,
 } from "react-router-dom";
 
+/* ============================================================
+ * LAYOUT
+ * ========================================================== */
+
 import { AppShell } from "@/components/layout/AppShell";
 import { ToastContainer } from "@/components/retro/Toast";
+
+/* ============================================================
+ * PAGES
+ * ========================================================== */
 
 import { ActivityPage } from "@/pages/ActivityPage";
 import { DashboardPage } from "@/pages/DashboardPage";
@@ -18,13 +27,17 @@ import { LoginPage } from "@/pages/LoginPage";
 import { MembersPage } from "@/pages/MembersPage";
 import { OnboardingPage } from "@/pages/OnboardingPage";
 import { PaymentsPage } from "@/pages/PaymentsPage";
-import { ProposalDetailPage } from "@/pages/ProposalDetailPage";
+import  ProposalDetailPage  from "@/pages/ProposalDetailPage";
 import { ProposalsPage } from "@/pages/ProposalsPage";
 import { ReceivePage } from "@/pages/ReceivePage";
 import { SendPage } from "@/pages/SendPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { TransactionsPage } from "@/pages/TransactionsPage";
 import { WalletPage } from "@/pages/WalletPage";
+
+/* ============================================================
+ * APP CONTEXT
+ * ========================================================== */
 
 import {
   AppProvider,
@@ -51,6 +64,9 @@ function ScrollToTop() {
 
 /* ============================================================
  * PROTECTED ROUTES
+ *
+ * Everything inside this component requires
+ * a connected Solana wallet.
  * ========================================================== */
 
 function ProtectedRoutes() {
@@ -110,13 +126,17 @@ function ProtectedRoutes() {
         />
 
         {/* ====================================================
-         * SEND / RECEIVE
+         * SEND
          * ================================================== */}
 
         <Route
           path="/send"
           element={<SendPage />}
         />
+
+        {/* ====================================================
+         * RECEIVE
+         * ================================================== */}
 
         <Route
           path="/receive"
@@ -145,6 +165,16 @@ function ProtectedRoutes() {
           path="/proposals"
           element={<ProposalsPage />}
         />
+
+        {/* ----------------------------------------------------
+         * PROPOSAL DETAIL
+         *
+         * Example:
+         *
+         * /proposals/7xKX...
+         *
+         * :id contains the proposal PDA.
+         * -------------------------------------------------- */}
 
         <Route
           path="/proposals/:id"
@@ -188,7 +218,9 @@ function ProtectedRoutes() {
         />
 
         {/* ====================================================
-         * FALLBACK
+         * PROTECTED FALLBACK
+         *
+         * Any unknown protected URL goes to dashboard.
          * ================================================== */}
 
         <Route
@@ -200,13 +232,14 @@ function ProtectedRoutes() {
             />
           }
         />
+
       </Routes>
     </AppShell>
   );
 }
 
 /* ============================================================
- * PUBLIC / APP ROUTES
+ * PUBLIC / APPLICATION ROUTES
  * ========================================================== */
 
 function AppRoutes() {
@@ -236,7 +269,9 @@ function AppRoutes() {
       {/* ======================================================
        * ONBOARDING
        *
-       * Currently available but not forced.
+       * Wallet must be connected.
+       *
+       * Currently NOT forced automatically.
        * ==================================================== */}
 
       <Route
@@ -255,11 +290,32 @@ function AppRoutes() {
 
       {/* ======================================================
        * PROTECTED APPLICATION
+       *
+       * All remaining routes are handled by
+       * ProtectedRoutes.
        * ==================================================== */}
 
       <Route
         path="/*"
         element={<ProtectedRoutes />}
+      />
+
+      {/* ======================================================
+       * GLOBAL FALLBACK
+       * ==================================================== */}
+
+      <Route
+        path="*"
+        element={
+          <Navigate
+            to={
+              walletConnected
+                ? "/dashboard"
+                : "/login"
+            }
+            replace
+          />
+        }
       />
 
     </Routes>
@@ -274,11 +330,25 @@ export default function App() {
   return (
     <AppProvider>
       <BrowserRouter>
+
+        {/* ----------------------------------------------------
+         * RESET SCROLL ON ROUTE CHANGE
+         * -------------------------------------------------- */}
+
         <ScrollToTop />
+
+        {/* ----------------------------------------------------
+         * APPLICATION ROUTES
+         * -------------------------------------------------- */}
 
         <AppRoutes />
 
+        {/* ----------------------------------------------------
+         * GLOBAL TOASTS
+         * -------------------------------------------------- */}
+
         <ToastContainer />
+
       </BrowserRouter>
     </AppProvider>
   );

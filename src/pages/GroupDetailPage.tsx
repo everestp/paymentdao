@@ -481,7 +481,7 @@ export default function GroupDetailPage() {
     const signature =
       await contributeOnChain(
         chainGroup.address,
-        Number(1),
+        Number(0.01),
         "SOL",
       );
 
