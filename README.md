@@ -1,126 +1,98 @@
 # PayDAO
 
-### Realtime DAO Treasury Governance on Solana with MagicBlock Ephemeral Rollups
+### Realtime DAO Treasury Governance on Solana powered by MagicBlock Ephemeral Rollups
 
-> **PayDAO is a decentralized treasury governance protocol that combines Solana's durable settlement layer with MagicBlock Ephemeral Rollups for fast, realtime governance state.**
+<p align="center">
+  <strong>Govern together. Execute automatically. Settle on Solana.</strong>
+</p>
 
-PayDAO enables groups to collectively manage a shared SOL treasury through proposals and member voting.
-
-The core idea is simple:
-
-**Solana provides durable ownership and settlement.
-MagicBlock provides a fast execution environment for active governance state.**
-
-This architecture allows PayDAO to keep the treasury and governance rules anchored to Solana while delegating selected governance accounts to MagicBlock when realtime interaction is needed.
+<p align="center">
+  PayDAO is a decentralized treasury governance protocol that combines
+  <strong>Solana</strong> for durable state and settlement with
+  <strong>MagicBlock Ephemeral Rollups</strong> for realtime governance execution.
+</p>
 
 ---
 
-## 🏆 Built for BlitzX
+## 🏆 BlitzX Hackathon
 
-PayDAO is designed around a practical problem in decentralized organizations:
+PayDAO is built around one question:
 
-> **How can a DAO make treasury decisions quickly without giving up Solana's security and settlement guarantees?**
+> **Can DAO treasury governance be realtime without giving up Solana's programmable security and durable settlement?**
 
-Traditional on-chain governance can require every state transition to happen directly on the base layer. For highly interactive governance, this can introduce unnecessary latency and transaction overhead.
+PayDAO approaches this by separating **active governance execution** from **durable settlement**.
 
-PayDAO addresses this by selectively delegating governance state to **MagicBlock Ephemeral Rollups**.
+Instead of forcing every interactive governance state transition to happen directly on Solana, PayDAO can selectively delegate its governance state to **MagicBlock Ephemeral Rollups**.
 
-The application can operate on delegated governance state during active sessions and explicitly commit that state back to Solana when durable settlement is required.
+The core architecture is:
+
+```text
+              ┌─────────────────────┐
+              │       PAYDAO        │
+              │                     │
+              │ DAO Treasury        │
+              │ Proposals            │
+              │ Voting               │
+              │ Governance           │
+              └──────────┬──────────┘
+                         │
+             ┌───────────┴───────────┐
+             │                       │
+             ▼                       ▼
+      ┌──────────────┐       ┌──────────────────┐
+      │    SOLANA    │       │    MAGICBLOCK    │
+      │              │◄─────►│ Ephemeral Rollup │
+      │ Durable State│ commit│                  │
+      │ Treasury     │       │ Realtime State   │
+      │ Settlement   │       │ Active Governance│
+      │ Ownership    │       │ Fast Execution   │
+      └──────────────┘       └──────────────────┘
+```
+
+**Solana is the durable settlement layer.
+MagicBlock is the realtime execution layer.**
+
+---
+
+# Why PayDAO?
+
+DAO treasury management normally involves several problems:
+
+* Governance interactions can be slow.
+* Treasury decisions require strict authorization.
+* Multiple members need to coordinate around proposals.
+* Voting state must prevent duplicate participation.
+* Passed proposals still need to be executed.
+* Interactive governance is difficult to make feel realtime.
+
+PayDAO combines:
+
+**DAO governance + treasury management + voting + automatic execution + MagicBlock Ephemeral Rollups**
+
+into one on-chain protocol.
 
 ---
 
 # Why MagicBlock?
 
-MagicBlock is not an additional backend or indexing service in PayDAO.
+MagicBlock is not used as an external API, database, or centralized backend.
 
-It is part of the **execution architecture of the protocol itself**.
+It is integrated directly into the **Anchor program**.
 
-PayDAO integrates MagicBlock directly into its Anchor program through the Ephemeral Rollups SDK.
+PayDAO uses the MagicBlock Ephemeral Rollups SDK to:
 
-The program currently supports:
+* Mark the program as Ephemeral Rollup compatible
+* Delegate DAO Group state
+* Delegate Proposal state
+* Delegate Treasury state
+* Perform realtime governance mutations
+* Commit individual accounts
+* Atomically commit governance state
+* Commit and undelegate governance state
+* Optionally target a specific validator
+* Build and invoke Magic Intent Bundles
 
-* Ephemeral Rollup compatibility through `#[ephemeral]`
-* Group account delegation
-* Proposal account delegation
-* Treasury account delegation
-* Individual account commits
-* Atomic governance-state commits
-* Commit + undelegate
-* Optional validator selection
-* Realtime state mutation through a heartbeat instruction
-* Magic Intent Bundle construction for commit operations
-
-This makes MagicBlock a first-class part of PayDAO's governance execution model.
-
----
-
-# Architecture
-
-```text
-                         PAYDAO
-                           │
-                           ▼
-                 ┌─────────────────────┐
-                 │   React Frontend    │
-                 │                     │
-                 │ Groups              │
-                 │ Proposals           │
-                 │ Voting              │
-                 │ Treasury            │
-                 └──────────┬──────────┘
-                            │
-                            ▼
-                 ┌─────────────────────┐
-                 │ Anchor Program      │
-                 │ paydao_proof        │
-                 │                     │
-                 │ Governance Rules    │
-                 │ Treasury Rules      │
-                 │ Voting Rules        │
-                 │ Delegation          │
-                 │ Commit              │
-                 └──────────┬──────────┘
-                            │
-                 ┌──────────┴──────────┐
-                 │                     │
-                 ▼                     ▼
-        ┌─────────────────┐   ┌─────────────────────┐
-        │     Solana      │   │ MagicBlock          │
-        │                 │   │ Ephemeral Rollup     │
-        │ Durable State   │◄─►│                     │
-        │ Treasury        │   │ Delegated Governance │
-        │ Settlement      │   │ Realtime State       │
-        │ Ownership       │   │ Fast Execution       │
-        └─────────────────┘   └─────────────────────┘
-```
-
-### The important architectural boundary
-
-PayDAO does **not** move the entire application to MagicBlock.
-
-Instead, it selectively delegates the accounts that participate in active governance:
-
-```text
-Solana
- ├── Durable ownership
- ├── Treasury settlement
- ├── Governance state
- └── Final committed state
-
-MagicBlock Ephemeral Rollup
- ├── Delegated Group
- ├── Delegated Proposal
- ├── Delegated Treasury
- └── Realtime governance mutations
-```
-
-This selective delegation keeps the architecture explicit and minimizes unnecessary state movement.
-
----
-
-# MagicBlock Integration
-
-The Anchor program imports the MagicBlock Ephemeral Rollups SDK:
+The integration is implemented directly in Rust.
 
 ```rust
 use ephemeral_rollups_sdk::anchor::{
@@ -133,7 +105,7 @@ use ephemeral_rollups_sdk::cpi::DelegateConfig;
 use ephemeral_rollups_sdk::ephem::MagicIntentBundleBuilder;
 ```
 
-The entire program is marked for Ephemeral Rollup compatibility:
+The program itself is marked:
 
 ```rust
 #[ephemeral]
@@ -143,34 +115,137 @@ pub mod paydao_proof {
 }
 ```
 
-This allows the governance program to participate in the Ephemeral Rollup execution model while retaining normal Anchor program structure.
+This makes MagicBlock part of the protocol architecture rather than simply an infrastructure dependency.
 
 ---
 
-# 1. Delegating Governance State
-
-PayDAO explicitly delegates three important account types:
-
-### Group
-
-The Group account represents the DAO itself and contains governance configuration and state.
+# Architecture
 
 ```text
-Group
- ├── creator
- ├── group_key
- ├── member_count
- ├── current_lamports
- ├── reserved_lamports
- ├── threshold_bps
- ├── quorum_bps
- ├── voting_deadline
- ├── privacy_authority
- ├── active
- └── realtime_nonce
+                         PAYDAO
+                           │
+                           ▼
+                 ┌─────────────────────┐
+                 │    React Frontend   │
+                 │                     │
+                 │ Groups              │
+                 │ Proposals           │
+                 │ Voting              │
+                 │ Treasury            │
+                 │ Governance          │
+                 └──────────┬──────────┘
+                            │
+                            ▼
+                 ┌─────────────────────┐
+                 │    Anchor Program   │
+                 │     paydao_proof    │
+                 │                     │
+                 │ Governance Rules    │
+                 │ Voting Rules        │
+                 │ Treasury Rules      │
+                 │ Delegation          │
+                 │ Commit              │
+                 └──────────┬──────────┘
+                            │
+                 ┌──────────┴──────────┐
+                 │                     │
+                 ▼                     ▼
+        ┌─────────────────┐   ┌─────────────────────┐
+        │     SOLANA      │   │     MAGICBLOCK      │
+        │                 │   │   Ephemeral Rollup  │
+        │ Durable State   │◄─►│                     │
+        │ Treasury        │   │ Delegated State     │
+        │ Settlement      │   │ Realtime Execution  │
+        │ Ownership       │   │ Governance Sessions │
+        └─────────────────┘   └─────────────────────┘
 ```
 
-The Group can be delegated to MagicBlock using:
+---
+
+# The Three Core Delegated Accounts
+
+PayDAO explicitly integrates MagicBlock with three governance-critical accounts.
+
+```text
+                    DAO
+                     │
+        ┌────────────┼────────────┐
+        │            │            │
+        ▼            ▼            ▼
+      Group       Proposal      Treasury
+        │            │            │
+        └────────────┼────────────┘
+                     │
+                     ▼
+             MagicBlock ER
+```
+
+## Group
+
+The Group represents the DAO itself.
+
+It contains governance configuration and realtime state including:
+
+* Creator
+* Group identifier
+* Member count
+* Current treasury balance
+* Reserved treasury balance
+* Voting threshold
+* Quorum configuration
+* Voting deadline
+* Privacy authority
+* Active state
+* Realtime nonce
+
+---
+
+## Proposal
+
+A Proposal represents a treasury decision.
+
+It contains information such as:
+
+* Proposal ID
+* Group
+* Creator
+* Recipient
+* Requested amount
+* Description
+* Proposal status
+* Vote counts
+* Voter count
+* Deadline
+* Reserved treasury amount
+
+---
+
+## Treasury
+
+The Treasury represents the group's SOL-controlled treasury account.
+
+Treasury accounting tracks:
+
+```text
+current_lamports
+reserved_lamports
+```
+
+The program controls treasury payments through its own authorization logic.
+
+---
+
+# MagicBlock Integration
+
+## 1. Delegate Group
+
+PayDAO exposes:
+
+```text
+delegate_group
+```
+
+The instruction derives the Group PDA and delegates it to MagicBlock.
 
 ```rust
 ctx.accounts.delegate_group(
@@ -187,15 +262,19 @@ ctx.accounts.delegate_group(
 )?;
 ```
 
-The delegation derives the same PDA used by the Solana program and optionally accepts a validator supplied through `remaining_accounts`.
+The validator can optionally be supplied through `remaining_accounts`.
 
 ---
 
-# 2. Delegating Proposals
+# 2. Delegate Proposal
 
-Individual proposals can also be delegated.
+Active proposals can be delegated using:
 
-Proposal PDAs are derived from:
+```text
+delegate_proposal
+```
+
+The proposal PDA is derived from:
 
 ```text
 proposal
@@ -203,7 +282,7 @@ proposal
 + proposal_id
 ```
 
-The program delegates them with:
+and delegated through the MagicBlock SDK.
 
 ```rust
 ctx.accounts.delegate_proposal(
@@ -220,13 +299,11 @@ ctx.accounts.delegate_proposal(
 )?;
 ```
 
-This allows active proposal state to participate in the Ephemeral Rollup execution environment.
-
 ---
 
-# 3. Delegating the Treasury
+# 3. Delegate Treasury
 
-The DAO treasury is another explicitly delegatable account.
+The DAO Treasury can also be delegated.
 
 Its PDA is derived from:
 
@@ -235,7 +312,7 @@ treasury
 + group
 ```
 
-The program uses:
+and delegated with:
 
 ```rust
 ctx.accounts.delegate_treasury(
@@ -251,15 +328,29 @@ ctx.accounts.delegate_treasury(
 )?;
 ```
 
-The important design decision is that the treasury is still governed by the Anchor program's authorization and accounting rules.
+The treasury does not become uncontrolled by delegation.
 
-MagicBlock provides the delegated execution environment; it does not replace PayDAO's treasury logic.
+The PayDAO Anchor program still defines how treasury funds can be moved.
 
 ---
 
-# 4. Realtime Governance State
+# Realtime Governance
 
-PayDAO includes an explicit realtime state mutation:
+PayDAO includes explicit realtime state that can be mutated while governance state is active.
+
+The Group contains:
+
+```text
+realtime_nonce
+```
+
+The program exposes:
+
+```text
+realtime_heartbeat
+```
+
+which increments that value.
 
 ```rust
 pub fn realtime_heartbeat(
@@ -274,41 +365,40 @@ pub fn realtime_heartbeat(
 }
 ```
 
-The `realtime_nonce` exists specifically as mutable governance state that can change during an active delegated session.
+This provides a concrete realtime state transition for the delegated governance environment.
 
-Conceptually:
+The architecture becomes:
 
 ```text
-Active DAO Session
-       │
-       ▼
+Solana
+   │
+   │ delegate
+   ▼
 MagicBlock Ephemeral Rollup
-       │
-       ├── delegated Group
-       ├── delegated Proposal
-       └── delegated Treasury
-       │
-       ▼
-Realtime state mutations
-       │
-       ▼
+   │
+   ├── Group
+   ├── Proposal
+   └── Treasury
+   │
+   ▼
+Realtime governance mutations
+   │
+   ▼
 Commit
-       │
-       ▼
+   │
+   ▼
 Solana
 ```
 
-This is the part of PayDAO where MagicBlock provides architectural value beyond simply deploying another Solana program.
-
 ---
 
-# 5. Committing State Back to Solana
+# Commit Back to Solana
 
-Delegation is only useful if the resulting state can be reconciled with durable Solana state.
+Delegation is only one half of the architecture.
 
-PayDAO therefore implements explicit commit instructions.
+PayDAO also provides explicit mechanisms to commit delegated state back to Solana.
 
-For example, a Group can be committed using:
+The Magic Intent Bundle Builder is used for this:
 
 ```rust
 MagicIntentBundleBuilder::new(
@@ -322,7 +412,7 @@ MagicIntentBundleBuilder::new(
 .build_and_invoke()?;
 ```
 
-The same mechanism exists for:
+Individual commit instructions exist for:
 
 * Group
 * Proposal
@@ -330,19 +420,9 @@ The same mechanism exists for:
 
 ---
 
-# 6. Atomic Governance Commit
+# Atomic Governance Commit
 
-PayDAO also provides a stronger commit path for governance state.
-
-Instead of committing three accounts independently, the protocol can commit:
-
-```text
-Group
-Proposal
-Treasury
-```
-
-as one governance state bundle.
+Because Group, Proposal, and Treasury are logically connected, PayDAO also supports an atomic governance-state commit.
 
 ```rust
 MagicIntentBundleBuilder::new(
@@ -358,21 +438,31 @@ MagicIntentBundleBuilder::new(
 .build_and_invoke()?;
 ```
 
-This is important because these accounts are logically connected.
+This commits:
 
-A proposal affects governance state.
+```text
+┌──────────────┐
+│    Group     │
+├──────────────┤
+│   Proposal   │
+├──────────────┤
+│   Treasury   │
+└──────────────┘
+       │
+       ▼
+Magic Intent Bundle
+       │
+       ▼
+     Solana
+```
 
-Governance affects treasury reservations.
-
-Treasury state reflects the financial result.
-
-Keeping these accounts together during a commit gives PayDAO an explicit **atomic governance-state synchronization path**.
+This is particularly useful because a governance decision can affect all three accounts.
 
 ---
 
-# 7. Commit + Undelegate
+# Commit + Undelegate
 
-PayDAO also supports returning delegated governance state to the normal Solana lifecycle.
+PayDAO can also commit governance state and return it to the normal Solana lifecycle.
 
 ```rust
 MagicIntentBundleBuilder::new(
@@ -388,383 +478,423 @@ MagicIntentBundleBuilder::new(
 .build_and_invoke()?;
 ```
 
-The lifecycle becomes:
+The lifecycle is:
 
 ```text
-                 ┌───────────────┐
-                 │    Solana     │
-                 │ Durable State │
-                 └───────┬───────┘
-                         │
-                    delegate
-                         │
-                         ▼
-              ┌────────────────────┐
-              │    MagicBlock      │
-              │ Ephemeral Rollup   │
-              │                    │
-              │ Active Governance  │
-              └─────────┬──────────┘
-                        │
-                  commit / commit
-                   + undelegate
-                        │
-                        ▼
-                 ┌───────────────┐
-                 │    Solana     │
-                 │ Durable State │
-                 └───────────────┘
+              SOLANA
+                 │
+              delegate
+                 │
+                 ▼
+       MAGICBLOCK EPHEMERAL
+             ROLLUP
+                 │
+                 │
+        Active Governance
+                 │
+                 ▼
+              commit
+                 │
+                 ▼
+              SOLANA
+                 │
+                 ▼
+          Durable State
+```
+
+Or:
+
+```text
+delegate
+   ↓
+execute
+   ↓
+commit + undelegate
+   ↓
+Solana durable state
 ```
 
 ---
 
-# Governance Model
+# 🗳️ How Voting Works
 
-PayDAO uses explicit on-chain accounts and PDA-based ownership.
+PayDAO's governance flow is designed around member-controlled treasury decisions.
 
-## Group
+The voting lifecycle is:
 
-A Group represents a DAO.
-
-It stores:
-
-* Creator
-* Group identifier
-* Member count
-* Treasury accounting
-* Reserved funds
-* Voting threshold
-* Quorum configuration
-* Voting deadline configuration
-* Privacy authority
-* Active state
-* Realtime nonce
-
----
-
-## Member
-
-Each participating wallet can have a Member PDA.
-
-Membership is associated with the group and wallet.
-
-Members are used by the voting instruction to verify that the voter belongs to the group.
-
----
-
-## Proposal
-
-A Proposal represents a treasury decision.
-
-A proposal contains information such as:
-
-* Proposal ID
-* Group
-* Creator
-* Recipient
-* Requested amount
-* Description
-* Voting state
-* Vote counts
-* Voter count
-* Deadline
-* Reserved treasury amount
-
-### Proposal creation
-
-An important property of the current program is that **proposal creation is open to any wallet**.
-
-The `create_proposal` instruction does not require the creator to be a group member.
-
-Voting is different: `cast_private_vote` requires a valid Member account for the voter.
+```text
+Proposal Created
+       │
+       ▼
+Treasury Funds Reserved
+       │
+       ▼
+Voting Begins
+       │
+       ▼
+Member Submits Vote
+       │
+       ▼
+VoteReceipt PDA Created
+       │
+       ▼
+Aggregate Vote Updated
+       │
+       ▼
+All Required Members Voted?
+       │
+       ├──────── NO ────────► Continue Voting
+       │
+       ▼
+      YES
+       │
+       ▼
+Calculate Approval
+       │
+       ├──────── Threshold Not Met
+       │                │
+       │                ▼
+       │          Reject Proposal
+       │                │
+       │                ▼
+       │        Release Reservation
+       │
+       ▼
+Threshold Reached
+       │
+       ▼
+Automatic Treasury Execution
+       │
+       ▼
+SOL Transfer
+       │
+       ▼
+Proposal = Executed
+```
 
 ---
 
-# Treasury Safety Model
+# 🔒 Vote Choice Privacy
 
-PayDAO does not allow arbitrary wallets to directly withdraw treasury funds.
+PayDAO separates the **individual vote choice** from the public aggregate voting result.
 
-The treasury is controlled by the Anchor program.
+The proposal maintains aggregate values:
 
-Funds enter through:
+```text
+YES
+NO
+ABSTAIN
+TOTAL VOTERS
+```
+
+The `VoteReceipt` PDA is derived from:
+
+```text
+VOTE_SEED
++ proposal
++ voter
+```
+
+This prevents a wallet from submitting multiple votes for the same proposal.
+
+The current receipt tracks the voter, but **does not store the selected YES/NO/ABSTAIN choice as a field**.
+
+Therefore:
+
+> **PayDAO does not expose an individual YES/NO/ABSTAIN value through the VoteReceipt itself; the proposal exposes aggregate voting results.**
+
+### Important distinction
+
+The current implementation should **not** be described as cryptographically anonymous voting.
+
+The voter's public key is stored in the VoteReceipt.
+
+So PayDAO currently provides **vote-choice separation from the participation receipt**, rather than full wallet anonymity.
+
+A future cryptographic voting layer could provide stronger anonymity if required.
+
+---
+
+# 👤 Who Can Vote?
+
+A voter must have a valid Member PDA for the DAO.
+
+The voting instruction validates:
+
+```text
+Wallet
+  │
+  ▼
+Member PDA
+  │
+  ├── Missing → Reject
+  │
+  ▼
+Proposal active?
+  │
+  ├── No → Reject
+  │
+  ▼
+VoteReceipt exists?
+  │
+  ├── Yes → Reject duplicate vote
+  │
+  ▼
+Accept vote
+```
+
+---
+
+# Can the Proposal Creator Vote?
+
+Yes — **if the proposal creator is also a DAO member**.
+
+Proposal creation itself is permissionless in the current implementation.
+
+However, voting requires membership.
+
+Therefore:
+
+```text
+Proposal Creator
+      │
+      ├── DAO Member
+      │      │
+      │      ▼
+      │    CAN VOTE
+      │
+      └── Not a Member
+             │
+             ▼
+          CANNOT VOTE
+```
+
+This distinction is enforced by the voting instruction.
+
+---
+
+# ⚡ Automatic Treasury Execution
+
+One of PayDAO's key features is that the final vote can trigger treasury execution directly from the program.
+
+After the vote is recorded, PayDAO evaluates the aggregate voting result.
+
+If the required threshold is reached:
+
+```text
+cast_private_vote()
+        │
+        ▼
+Aggregate vote updated
+        │
+        ▼
+Threshold satisfied
+        │
+        ▼
+execute_treasury_payment()
+        │
+        ├── Transfer SOL
+        ├── Update treasury balance
+        ├── Update reserved balance
+        └── Mark proposal Executed
+```
+
+There is no centralized backend responsible for deciding whether the treasury should execute.
+
+The frontend does not have authority to bypass the governance rules.
+
+The Anchor program performs the actual treasury payment.
+
+---
+
+# Example
+
+Imagine a DAO with five members voting on:
+
+```text
+Proposal
+──────────────
+Recipient: Treasury-approved destination
+Amount:    10 SOL
+Members:   5
+```
+
+Votes:
+
+```text
+Member 1 → YES
+Member 2 → YES
+Member 3 → NO
+Member 4 → YES
+Member 5 → YES
+```
+
+Aggregate state:
+
+```text
+YES:       4
+NO:        1
+ABSTAIN:   0
+Voters:    5
+```
+
+If the configured threshold is satisfied:
+
+```text
+Final Vote
+    │
+    ▼
+Threshold Reached
+    │
+    ▼
+Proposal Passed
+    │
+    ▼
+execute_treasury_payment()
+    │
+    ▼
+10 SOL transferred
+    │
+    ▼
+Proposal = Executed
+```
+
+The complete lifecycle becomes:
+
+> **Vote → Validate → Decide → Execute → Settle**
+
+---
+
+# 💰 Treasury Model
+
+The treasury is controlled by the program.
+
+Users contribute SOL through:
+
+```text
+contribute
+```
+
+The flow is:
 
 ```text
 Contributor
      │
      ▼
-Treasury PDA
+contribute()
+     │
+     ├── Transfer SOL
+     ├── Update current_lamports
+     ├── Create/update Member PDA
+     └── Update member_count
      │
      ▼
-Group accounting
+Treasury PDA
 ```
 
-When a proposal is created, the requested amount is reserved:
+---
+
+# Proposal Treasury Reservation
+
+When a proposal is created, the requested treasury amount is reserved.
 
 ```text
 Treasury
- ├── current_lamports
- └── reserved_lamports
+──────────────
+Current Funds
+Reserved Funds
+Available Funds
 ```
 
-This prevents proposal accounting from being disconnected from available treasury funds.
+This gives the governance system accounting state around pending proposals.
+
+If a proposal does not pass, the reserved amount can be released.
+
+If it executes, the treasury accounting is updated as part of the payment.
 
 ---
 
-# Contribution Flow
+# 🏦 Treasury Settlement
 
-```text
-User
- │
- │ contribute()
- ▼
-Treasury PDA
- │
- ├── transfer SOL
- ├── update current_lamports
- ├── create/update Member PDA
- └── update member_count
-```
-
-The `contribute` instruction is the program's treasury entry point for SOL contributions.
-
----
-
-# Voting Flow
-
-```text
-                 Proposal
-                    │
-                    ▼
-             Voting is active?
-                    │
-                    ▼
-             Is voter a member?
-                    │
-                    ▼
-             VoteReceipt PDA
-                    │
-                    ▼
-       ┌────────────┼────────────┐
-       │            │            │
-      YES           NO         ABSTAIN
-       │            │            │
-       └────────────┼────────────┘
-                    ▼
-              Aggregate votes
-                    │
-                    ▼
-             Threshold check
-                    │
-          ┌─────────┴─────────┐
-          ▼                   ▼
-       Passed              Rejected
-          │                   │
-          ▼                   ▼
-     Treasury payment     Reservation
-                            released
-```
-
-The program prevents the same wallet from voting multiple times on the same proposal through a deterministic `VoteReceipt` PDA:
-
-```text
-vote
-+ proposal
-+ voter
-```
-
----
-
-# Voting and Privacy
-
-PayDAO's voting instruction is named `cast_private_vote`, but privacy should be understood precisely.
-
-The program does **not** claim cryptographic voter anonymity.
-
-The current implementation:
-
-* Stores aggregate Yes/No/Abstain counts on the Proposal
-* Creates a VoteReceipt for each voter
-* Stores the voter public key in the receipt
-* Does not store the individual vote choice inside the VoteReceipt
-
-Therefore, the architecture separates **vote-choice storage** from **voter participation tracking**, but it should not be interpreted as fully anonymous governance.
-
-MagicBlock is also **not** the privacy mechanism in PayDAO.
-
----
-
-# Proposal Finalization
-
-After the voting period and required participation conditions are satisfied, a proposal can be finalized.
-
-The program determines whether the proposal passes based on its voting rules.
-
-A passed proposal becomes eligible for execution.
-
-```text
-Voting
-  │
-  ▼
-Finalize Proposal
-  │
-  ├── Passed
-  │     │
-  │     ▼
-  │  Execute Proposal
-  │
-  └── Rejected
-        │
-        ▼
-   Release Reserved Funds
-```
-
-The current implementation can also execute the treasury payment directly when the final vote causes the proposal to reach the required threshold.
-
----
-
-# Treasury Settlement
-
-The actual treasury payment is performed by the program's internal:
+The actual treasury payment is handled by:
 
 ```text
 execute_treasury_payment
 ```
 
-This function:
+The helper:
 
 1. Transfers SOL from the program-controlled Treasury PDA
-2. Sends it to the immutable proposal recipient
-3. Updates treasury accounting
-4. Updates reserved funds
-5. Marks the proposal as executed
+2. Sends funds to the proposal recipient
+3. Updates `current_lamports`
+4. Updates `reserved_lamports`
+5. Marks the proposal as `Executed`
 
-MagicBlock does not replace this business logic.
-
-The governance rules remain defined by the PayDAO Anchor program.
+The frontend cannot simply call an arbitrary transfer and bypass this process.
 
 ---
 
-# Core Program Instructions
-
-| Instruction                   | Purpose                                       |
-| ----------------------------- | --------------------------------------------- |
-| `initialize_group`            | Create DAO group and treasury                 |
-| `contribute`                  | Deposit SOL and establish/update membership   |
-| `create_proposal`             | Create treasury proposal                      |
-| `cast_private_vote`           | Cast a member vote                            |
-| `finalize_proposal`           | Determine final proposal status               |
-| `execute_proposal`            | Execute a passed proposal                     |
-| `realtime_heartbeat`          | Mutate realtime governance state              |
-| `delegate_group`              | Delegate Group to MagicBlock                  |
-| `delegate_proposal`           | Delegate Proposal to MagicBlock               |
-| `delegate_treasury`           | Delegate Treasury to MagicBlock               |
-| `commit_group`                | Commit Group state                            |
-| `commit_proposal`             | Commit Proposal state                         |
-| `commit_treasury`             | Commit Treasury state                         |
-| `commit_governance_state`     | Atomically commit Group + Proposal + Treasury |
-| `undelegate_governance_state` | Commit and undelegate governance state        |
-
----
-
-# MagicBlock Account Contexts
-
-The integration uses the SDK's delegation and commit account macros.
-
-### Delegation
-
-```rust
-#[delegate]
-#[derive(Accounts)]
-pub struct DelegateGroup<'info> {
-    pub payer: Signer<'info>,
-
-    /// CHECK: MagicBlock delegated account.
-    #[account(mut, del)]
-    pub group: UncheckedAccount<'info>,
-}
-```
-
-Equivalent delegation contexts exist for:
+# Governance State Model
 
 ```text
-DelegateGroup
-DelegateProposal
-DelegateTreasury
+                    GROUP
+                      │
+          ┌───────────┼───────────┐
+          │           │           │
+          ▼           ▼           ▼
+       Members     Proposals    Treasury
+                      │
+                      ▼
+                    Votes
+                      │
+                      ▼
+                VoteReceipt
+                      │
+                      ▼
+              Aggregate Result
+                      │
+             ┌────────┴────────┐
+             ▼                 ▼
+          Rejected            Passed
+             │                 │
+             ▼                 ▼
+      Release Reserve    Treasury Execute
+                               │
+                               ▼
+                           Executed
 ```
-
-### Commit
-
-PayDAO defines:
-
-```text
-CommitGroup
-CommitProposal
-CommitTreasury
-CommitGovernanceState
-```
-
-The final context contains all three governance accounts:
-
-```rust
-#[commit]
-#[derive(Accounts)]
-pub struct CommitGovernanceState<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-
-    #[account(mut)]
-    pub group: Account<'info, Group>,
-
-    #[account(mut)]
-    pub proposal: Account<'info, Proposal>,
-
-    #[account(mut)]
-    pub treasury: Account<'info, Treasury>,
-}
-```
-
-This makes the MagicBlock integration visible directly at the program-account level rather than hiding it behind an external service.
 
 ---
 
-# Why This Architecture?
+# Program Instructions
 
-## Without an Ephemeral Execution Layer
-
-A highly interactive governance application would need every state mutation to operate directly through the base-layer execution path.
-
-That can make realtime interaction less attractive.
-
-## With MagicBlock
-
-PayDAO can selectively move active governance state into an Ephemeral Rollup:
-
-```text
-                 BASE LAYER
-                  Solana
-                    │
-                 delegate
-                    ▼
-             MAGICBLOCK ER
-                    │
-          Active governance
-                    │
-                 commit
-                    ▼
-                 Solana
-```
-
-The important point is **selective delegation**, not replacing Solana.
+| Instruction                   | Description                                             |
+| ----------------------------- | ------------------------------------------------------- |
+| `initialize_group`            | Creates a DAO group and treasury                        |
+| `contribute`                  | Adds SOL to the treasury and creates/updates membership |
+| `create_proposal`             | Creates a treasury proposal                             |
+| `cast_private_vote`           | Validates and records a member vote                     |
+| `finalize_proposal`           | Finalizes proposal status after voting conditions       |
+| `execute_proposal`            | Executes an already-passed proposal                     |
+| `realtime_heartbeat`          | Mutates realtime governance state                       |
+| `delegate_group`              | Delegates Group to MagicBlock                           |
+| `delegate_proposal`           | Delegates Proposal to MagicBlock                        |
+| `delegate_treasury`           | Delegates Treasury to MagicBlock                        |
+| `commit_group`                | Commits Group state                                     |
+| `commit_proposal`             | Commits Proposal state                                  |
+| `commit_treasury`             | Commits Treasury state                                  |
+| `commit_governance_state`     | Atomically commits Group + Proposal + Treasury          |
+| `undelegate_governance_state` | Commits and undelegates governance state                |
 
 ---
 
-# Security Boundaries
+# 🔐 Security Model
 
-PayDAO intentionally keeps important protocol rules inside the Anchor program.
+PayDAO keeps critical governance rules inside the Anchor program.
 
-### PDA-controlled state
+## PDA-Based State
 
-The protocol derives deterministic accounts for:
+The protocol uses deterministic PDAs for:
 
 ```text
 Group
@@ -774,29 +904,95 @@ Proposal
 VoteReceipt
 ```
 
-### Treasury authority
+---
 
-Treasury payments are performed through program-controlled logic rather than allowing arbitrary users to transfer treasury funds.
+## Treasury Control
 
-### Vote replay protection
+Treasury funds are controlled through program logic.
 
-A deterministic VoteReceipt prevents a wallet from submitting multiple votes for the same proposal.
+Users cannot simply withdraw arbitrary treasury funds.
 
-### Proposal reservation
+---
 
-Proposal creation reserves treasury funds before governance completion.
+## Duplicate Vote Protection
 
-### Immutable recipient
+The VoteReceipt PDA:
 
-The proposal recipient is used as the destination of the eventual treasury payment rather than allowing the destination to be changed during execution.
+```text
+vote + proposal + voter
+```
+
+prevents duplicate participation for the same proposal.
+
+---
+
+## Membership Validation
+
+Voting requires a valid Member account.
+
+---
+
+## Proposal Reservation
+
+Proposal creation reserves treasury funds before the proposal can consume them.
+
+---
+
+## Recipient Integrity
+
+The proposal recipient is part of the proposal state and is used during treasury execution.
+
+---
+
+## Arithmetic Safety
+
+The program uses checked arithmetic for important state mutations such as:
+
+* Treasury balances
+* Reserved balances
+* Member counts
+* Proposal counters
+* Realtime nonce
+
+---
+
+# MagicBlock Security Boundary
+
+MagicBlock does not replace PayDAO's governance rules.
+
+The responsibilities are separated:
+
+```text
+┌─────────────────────────────────────┐
+│             SOLANA                  │
+│                                     │
+│ Durable ownership                   │
+│ Program authority                  │
+│ Treasury settlement                │
+│ Final committed state              │
+└──────────────────┬──────────────────┘
+                   │
+                   │
+┌──────────────────▼──────────────────┐
+│          MAGICBLOCK ER              │
+│                                     │
+│ Delegated execution                │
+│ Active governance state             │
+│ Realtime mutations                  │
+└─────────────────────────────────────┘
+```
+
+MagicBlock provides the execution environment.
+
+PayDAO defines the governance protocol.
 
 ---
 
 # Frontend
 
-PayDAO's frontend is a React application designed around realtime DAO interaction.
+PayDAO uses a React-based frontend designed around DAO interaction.
 
-### Stack
+## Stack
 
 * React 18
 * TypeScript
@@ -805,56 +1001,82 @@ PayDAO's frontend is a React application designed around realtime DAO interactio
 * Framer Motion
 * Lucide
 * React Router
-* Solana Web3.js
 * Anchor
+* `@solana/web3.js`
 * Solana Wallet Adapter
 
 The frontend provides interfaces for:
 
 ```text
 Dashboard
-   │
-   ├── Groups
-   ├── Treasury
-   ├── Proposals
-   ├── Voting
-   └── Governance activity
+Groups
+Treasury
+Proposals
+Voting
+Governance Activity
 ```
 
-The frontend communicates directly with the Solana program and wallet.
+The application communicates with the Solana program through the connected wallet.
+
+---
+
+# No Centralized Backend
+
+PayDAO does not depend on a Go backend for its core protocol.
+
+The architecture is intentionally simplified:
+
+```text
+                 User
+                  │
+                  ▼
+             React App
+                  │
+                  ▼
+          Solana Wallet
+                  │
+                  ▼
+           Anchor Program
+             /        \
+            /          \
+           ▼            ▼
+       Solana       MagicBlock
+       Base Layer      ER
+```
+
+This means the core governance and treasury lifecycle is not dependent on a centralized application server.
 
 ---
 
 # Technology Stack
 
-## Blockchain
+### Blockchain
 
 * Solana
 * Anchor
 * Rust
 
-## Realtime Execution
+### Realtime Execution
 
-* MagicBlock
-* Ephemeral Rollups SDK
+* MagicBlock Ephemeral Rollups
+* `ephemeral_rollups_sdk`
 * Magic Intent Bundle Builder
 
-## Frontend
+### Frontend
 
-* React
+* React 18
 * TypeScript
 * Vite
 * Tailwind CSS
 * Framer Motion
+* Lucide
+* React Router
+
+### Solana Client
+
+* `@coral-xyz/anchor`
+* `@solana/web3.js`
 * Solana Wallet Adapter
-
-## Development
-
-* Rust / Cargo
-* Anchor CLI
-* Solana CLI
-* Node.js
-* npm
 
 ---
 
@@ -890,13 +1112,13 @@ paydao/
 
 # Program Configuration
 
-### Network
+## Network
 
 ```text
 Solana Devnet
 ```
 
-### Program ID
+## Program ID
 
 ```text
 Eo8z84VpZvhf86i6c9yzmrfMcjSGwT6hhYfjhK6HugvG
@@ -915,7 +1137,7 @@ Install:
 * Cargo
 * Solana CLI
 * Anchor CLI
-* A Solana-compatible wallet
+* Solana-compatible wallet
 
 Verify:
 
@@ -929,14 +1151,14 @@ anchor --version
 
 ---
 
-## Clone
+# Clone the Repository
 
 ```bash
-git clone <your-repository-url>
+git clone <repository-url>
 cd paydao
 ```
 
-Install frontend dependencies:
+Install dependencies:
 
 ```bash
 npm install
@@ -944,21 +1166,23 @@ npm install
 
 ---
 
-## Configure Solana
+# Configure Solana
 
 ```bash
 solana config set --url devnet
 ```
 
-Make sure your wallet is configured:
+Check the configured wallet:
 
 ```bash
 solana address
 ```
 
+Make sure the wallet has enough Devnet SOL for development and testing.
+
 ---
 
-## Build the Program
+# Build
 
 ```bash
 anchor build
@@ -966,13 +1190,13 @@ anchor build
 
 ---
 
-## Deploy
+# Deploy
 
 ```bash
 anchor deploy
 ```
 
-After deployment, verify that the generated program ID matches:
+Verify that the deployed program ID matches:
 
 ```text
 Eo8z84VpZvhf86i6c9yzmrfMcjSGwT6hhYfjhK6HugvG
@@ -980,67 +1204,93 @@ Eo8z84VpZvhf86i6c9yzmrfMcjSGwT6hhYfjhK6HugvG
 
 ---
 
-## Start the Frontend
+# Run Frontend
 
 ```bash
 npm run dev
 ```
 
-Then open the local development URL shown by Vite.
+Open the Vite development URL displayed in the terminal.
 
 ---
 
-# Suggested BlitzX Demo
+# 🧪 BlitzX Demo Flow
 
-The strongest demo path is to show the complete lifecycle rather than only the UI.
+For the strongest demonstration, run the protocol from creation to settlement.
 
-### 1. Create a DAO
+## Step 1 — Create DAO
 
 ```text
-Initialize Group
-       │
-       ▼
-Group PDA + Treasury PDA
+initialize_group
+      │
+      ├── Group PDA
+      └── Treasury PDA
 ```
 
-### 2. Fund the Treasury
+---
+
+## Step 2 — Fund Treasury
+
+Contribute SOL:
 
 ```text
 Wallet
   │
   ▼
-Contribute SOL
+contribute()
   │
   ▼
 Treasury
 ```
 
-### 3. Create a Proposal
+Membership is established as part of contribution.
+
+---
+
+## Step 3 — Create Proposal
+
+Create a treasury proposal:
 
 ```text
-Proposal
- ├── recipient
- ├── amount
- └── description
+Recipient
+Amount
+Description
+Deadline
 ```
 
-### 4. Delegate Active Governance
+The requested treasury amount becomes reserved.
 
-Show:
+---
+
+## Step 4 — Delegate Governance
+
+Demonstrate the MagicBlock integration:
 
 ```text
-Group → MagicBlock
-Proposal → MagicBlock
-Treasury → MagicBlock
+Group      ──► MagicBlock
+Proposal   ──► MagicBlock
+Treasury   ──► MagicBlock
 ```
 
-### 5. Demonstrate Realtime State
+---
 
-Execute the realtime heartbeat and show the governance state changing while delegated.
+## Step 5 — Demonstrate Realtime State
 
-### 6. Vote
+Call:
 
-Members cast:
+```text
+realtime_heartbeat
+```
+
+and show the realtime governance state changing.
+
+This demonstrates that the delegated Group state is participating in realtime execution.
+
+---
+
+## Step 6 — Vote
+
+Members vote:
 
 ```text
 YES
@@ -1048,206 +1298,356 @@ NO
 ABSTAIN
 ```
 
-### 7. Commit Governance State
+Each member receives one VoteReceipt per proposal.
 
-Use the atomic commit:
+---
+
+## Step 7 — Reach Threshold
+
+Once the voting conditions and configured threshold are satisfied:
+
+```text
+Vote
+ │
+ ▼
+Threshold
+ │
+ ▼
+Proposal Passed
+```
+
+---
+
+## Step 8 — Automatic Execution
+
+The program can immediately call:
+
+```text
+execute_treasury_payment
+```
+
+from the final vote path.
+
+```text
+Final Vote
+    │
+    ▼
+Threshold Reached
+    │
+    ▼
+Treasury Payment
+    │
+    ▼
+Proposal Executed
+```
+
+---
+
+## Step 9 — Commit Governance State
+
+Demonstrate:
 
 ```text
 Group
 Proposal
 Treasury
-      │
-      ▼
+   │
+   ▼
 Magic Intent Bundle
-      │
-      ▼
+   │
+   ▼
+Commit
+   │
+   ▼
 Solana
 ```
 
-### 8. Execute Treasury Payment
+This demonstrates the complete MagicBlock lifecycle.
 
-A passed proposal can then settle its treasury payment through the program.
+---
+
+# End-to-End Protocol
+
+The entire PayDAO architecture can be summarized as:
+
+```text
+                    USER
+                     │
+                     ▼
+                React App
+                     │
+                     ▼
+                Solana Wallet
+                     │
+                     ▼
+              Anchor Program
+                     │
+        ┌────────────┴────────────┐
+        │                         │
+        ▼                         ▼
+     SOLANA                 MAGICBLOCK ER
+        │                         │
+        │                    Delegated State
+        │                         │
+        │                    ┌────┴────┐
+        │                    │         │
+        │                  Group   Proposal
+        │                    │         │
+        │                    └────┬────┘
+        │                         │
+        │                     Treasury
+        │                         │
+        │                         ▼
+        │                   Active Voting
+        │                         │
+        │                         ▼
+        │                   Vote Aggregation
+        │                         │
+        │                         ▼
+        │                    Threshold Check
+        │                         │
+        │              ┌──────────┴──────────┐
+        │              │                     │
+        │           Rejected               Passed
+        │              │                     │
+        │              ▼                     ▼
+        │       Release Reserve       Auto Execute
+        │                                    │
+        │                                    ▼
+        │                             Treasury Payment
+        │                                    │
+        └───────────────────────┬────────────┘
+                                │
+                              Commit
+                                │
+                                ▼
+                             SOLANA
+                                │
+                                ▼
+                        Durable Settlement
+```
 
 ---
 
 # What Makes PayDAO Different?
 
-PayDAO is not simply:
+PayDAO is not simply another DAO dashboard.
 
-> "A DAO frontend on Solana."
+The protocol combines three important properties:
 
-The protocol is built around the distinction between **durable settlement** and **active governance execution**.
+### 1. Programmable Treasury Governance
+
+Treasury funds are governed by an Anchor program rather than a centralized operator.
+
+### 2. Realtime Execution
+
+MagicBlock Ephemeral Rollups provide a dedicated execution environment for delegated governance state.
+
+### 3. Automatic Settlement
+
+When the final governance conditions are satisfied, the program can execute the treasury payment directly.
+
+Together:
 
 ```text
-                 PAYDAO
-                    │
-       ┌────────────┴────────────┐
-       │                         │
-       ▼                         ▼
-    SOLANA                   MAGICBLOCK
-       │                         │
- Durable state              Active state
- Treasury                   Delegated accounts
- Settlement                 Realtime mutations
- Ownership                  Fast execution
-       │                         │
-       └────────────┬────────────┘
-                    │
-                    ▼
-             DAO GOVERNANCE
+Realtime Governance
+        +
+Programmable Treasury
+        +
+Automatic Execution
+        +
+Solana Settlement
 ```
 
-This gives PayDAO a clear path toward more interactive decentralized organizations without abandoning Solana as the settlement layer.
+form the core PayDAO architecture.
 
 ---
 
-# Design Principles
+# Why Selective Delegation?
 
-### 1. Solana remains the source of durable settlement
+PayDAO deliberately does not attempt to move everything into the Ephemeral Rollup.
 
-The treasury and protocol rules are defined by the Solana program.
-
-### 2. MagicBlock is used where realtime execution matters
-
-Only selected governance accounts are delegated.
-
-### 3. Delegation is explicit
-
-PayDAO exposes explicit instructions for:
+Instead:
 
 ```text
-delegate
-commit
-commit + undelegate
+              Solana
+                 │
+       Durable governance state
+                 │
+        ┌────────┴────────┐
+        │                 │
+        ▼                 ▼
+      Group            Treasury
+        │                 │
+        └───────┬─────────┘
+                │
+             Proposal
+                │
+                ▼
+          MagicBlock ER
 ```
 
-### 4. Governance state can be committed atomically
+Only governance state that benefits from active execution is delegated.
 
-Group, Proposal, and Treasury can be synchronized together.
+This creates a clear separation between:
 
-### 5. Business logic remains on-chain
-
-Treasury accounting, voting validation, proposal state transitions, and payment execution remain part of the Anchor program.
+**durability** and **realtime execution**.
 
 ---
 
-# Current Scope
+# Current Implementation
 
-The current implementation includes:
+The current PayDAO implementation includes:
 
 * DAO/group creation
 * SOL treasury contributions
-* Member account creation
-* Proposal creation
+* Member creation
+* Permissionless proposal creation
 * Treasury reservation
 * Member voting
 * Vote receipts
-* Vote aggregation
+* Aggregate voting
 * Proposal finalization
-* Treasury proposal execution
-* MagicBlock Ephemeral Rollup integration
+* Automatic treasury execution from the final vote path
+* Explicit proposal execution
+* MagicBlock Ephemeral Rollup compatibility
 * Group delegation
 * Proposal delegation
 * Treasury delegation
-* Realtime governance state mutation
-* Individual state commits
-* Atomic governance-state commit
+* Realtime heartbeat state
+* Individual account commits
+* Atomic governance-state commits
 * Commit + undelegate
 
 ---
 
-# Roadmap
+# Implementation Boundaries
 
-The architecture leaves room for additional MagicBlock-powered governance features.
+PayDAO intentionally documents what the current implementation does and does not provide.
 
-### Realtime Governance Sessions
+### Voting Privacy
 
-Allow active proposals to maintain a richer realtime execution session.
+The current implementation separates vote choice from the VoteReceipt, but the voter's public key is stored.
 
-### Richer Governance Events
+Therefore it is **not full cryptographic anonymous voting**.
 
-Expand realtime state beyond the current heartbeat mechanism.
-
-### Advanced Voting Privacy
-
-Introduce a dedicated cryptographic privacy mechanism if anonymous voting becomes a protocol requirement.
-
-### More Delegated State
-
-Evaluate additional governance accounts that benefit from Ephemeral Rollup execution.
-
-### Production Deployment
-
-Move from the current Devnet/hackathon environment toward audited production deployment.
-
----
-
-# Important Implementation Notes
-
-PayDAO deliberately does not claim capabilities that are not implemented in the current program.
-
-### MagicBlock is not the privacy layer
-
-The current voting implementation does not provide cryptographic anonymity.
-
-### Proposal creation is permissionless
+### Proposal Creation
 
 Any wallet can currently create a proposal.
 
-### Voting requires membership
+### Voting
 
-The voter must have a valid Member account associated with the group.
+Voting requires DAO membership.
 
-### Quorum configuration exists
+### Quorum
 
-The Group stores `quorum_bps`, but the currently shown finalization logic primarily relies on voting participation and threshold conditions rather than using quorum as an independent decision rule.
+The Group stores `quorum_bps`, but the currently shown decision logic primarily uses participation and threshold conditions rather than quorum as an independent decision rule.
 
-### Proposal execution is explicit
+### Execution
 
-Finalizing a proposal and executing a treasury payment are separate concepts, although the final vote path can trigger execution when the threshold is reached.
+The final vote can trigger automatic execution when the configured threshold is satisfied.
 
-These boundaries are intentional and make the current protocol easier to reason about and extend.
+`finalize_proposal` and `execute_proposal` also exist as explicit lifecycle instructions.
+
+### MagicBlock
+
+MagicBlock is used for delegated execution and realtime state.
+
+It is not presented as the privacy mechanism.
 
 ---
 
-# The Core Idea
+# Future Roadmap
 
-PayDAO's architecture can be summarized in one sentence:
+## Cryptographically Private Voting
 
-> **Use Solana for what must be durable, and MagicBlock for what benefits from realtime execution.**
+Add a dedicated cryptographic voting mechanism for stronger voter anonymity.
 
-The result is a DAO treasury system where governance can become more interactive without turning the Ephemeral Rollup into a replacement for the underlying blockchain.
+## Rich Realtime Governance
+
+Expand realtime state beyond the current heartbeat into richer governance sessions.
+
+## Advanced Governance Policies
+
+Support:
+
+* Multiple approval strategies
+* Time-weighted voting
+* Token-weighted voting
+* Delegated voting
+* Multi-stage proposals
+
+## Expanded MagicBlock State
+
+Evaluate additional governance accounts and interactions that benefit from Ephemeral Rollup execution.
+
+## Production Hardening
+
+Before mainnet deployment:
+
+* Formal security review
+* Program audit
+* Extensive integration tests
+* Economic attack analysis
+* Failure/recovery testing
+* Mainnet operational monitoring
+
+---
+
+# The PayDAO Thesis
+
+DAOs should not have to choose between:
 
 ```text
-                ┌──────────────────────┐
-                │       PAYDAO         │
-                │                      │
-                │  DAO Treasury        │
-                │  Governance          │
-                │  Voting              │
-                └──────────┬───────────┘
-                           │
-              ┌────────────┴────────────┐
-              │                         │
-              ▼                         ▼
-       ┌──────────────┐        ┌────────────────┐
-       │    SOLANA    │        │   MAGICBLOCK   │
-       │              │        │                │
-       │ Durable      │◄──────►│ Ephemeral      │
-       │ Settlement   │ commit │ Execution      │
-       │ Treasury     │        │ Realtime State │
-       │ Ownership    │        │ Governance     │
-       └──────────────┘        └────────────────┘
+Realtime UX
+      OR
+Blockchain settlement
 ```
 
-## PayDAO
+PayDAO is built around:
 
-**Decentralized treasury governance, designed for realtime execution.**
+```text
+                 PAYDAO
+                    │
+        ┌───────────┴───────────┐
+        │                       │
+        ▼                       ▼
+     SOLANA                 MAGICBLOCK
+        │                       │
+        │                       │
+ Durable Settlement       Realtime Execution
+ Treasury                 Active Governance
+ Ownership                Delegated State
+        │                       │
+        └───────────┬───────────┘
+                    │
+                    ▼
+             AUTOMATIC GOVERNANCE
+                    │
+                    ▼
+             TREASURY SETTLEMENT
+```
 
-Built with **Solana + Anchor + MagicBlock Ephemeral Rollups**.
+**Solana provides the durable foundation.**
+
+**MagicBlock provides the realtime execution environment.**
+
+**PayDAO connects the two into a programmable DAO treasury system.**
+
+---
+
+# 🚀 One-Line Summary
+
+> **PayDAO is a Solana DAO treasury protocol that uses MagicBlock Ephemeral Rollups for realtime governance and automatically executes approved treasury decisions through on-chain program logic.**
+
+---
+
+# Built With
+
+**Solana · Anchor · Rust · MagicBlock Ephemeral Rollups · React · TypeScript · Vite · Tailwind CSS**
 
 ---
 
 ## License
 
-Add the project's chosen license here before public production release.
+Add the project's selected open-source license before public production release.
