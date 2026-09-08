@@ -886,29 +886,10 @@ export function DashboardPage() {
             </span>
           </div>
 
-          <WalletMultiButton />
 
-          <PixelButton
-            variant="primary"
-            size="sm"
-            onClick={() =>
-              navigate("/send")
-            }
-          >
-            <ArrowUpRight className="w-4 h-4" />
-            Send Money
-          </PixelButton>
 
-          <PixelButton
-            variant="green"
-            size="sm"
-            onClick={() =>
-              navigate("/receive")
-            }
-          >
-            <ArrowDownLeft className="w-4 h-4" />
-            Request
-          </PixelButton>
+
+      
 
           <PixelButton
             size="sm"

@@ -66,19 +66,7 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="p-3 border-t border-bdlight">
-        <div className="card p-3 bg-bgdark">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="w-2 h-2 rounded-full bg-green blink" />
-            <span className="text-xs font-medium text-green">Connected as Demo</span>
-          </div>
-          <div className="text-xs font-mono text-txsec truncate">{user?.walletAddress || 'Not connected'}</div>
-          <div className="flex items-center gap-1 mt-1">
-            <Zap className="w-3 h-3 text-yellow" />
-            <span className="text-xs text-txdim">Solana • Demo Network</span>
-          </div>
-        </div>
-      </div>
+    
     </aside>
   );
 }
