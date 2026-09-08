@@ -431,10 +431,7 @@ export async function fetchGroupDetailOnChain(
         reservedLamports,
       ),
 
-    deadline:
-      toNumber(
-        data.deadline,
-      ),
+ deadline: toStringValue(data.deadline),
 
     votingThresholdBps,
 
@@ -469,12 +466,11 @@ export async function fetchGroupDetailOnChain(
         data.active,
       ),
 
-    realtimeNonce:
-      toNumber(
-        data.realtimeNonce ??
-          data.realtime_nonce ??
-          0,
-      ),
+realtimeNonce: toStringValue(
+  data.realtimeNonce ??
+    data.realtime_nonce ??
+    0,
+),
 
     proposals,
   };
@@ -548,7 +544,7 @@ export interface OnChainGroup {
   reservedLamports: string;
   reservedSol: number;
 
-  deadline: number;
+  deadline: string;
 
   votingThresholdBps: number;
   votingThreshold: number;
@@ -565,7 +561,7 @@ export interface OnChainGroup {
 
   active: boolean;
 
-  realtimeNonce: number;
+  realtimeNonce: string;
 
   proposals: OnChainProposal[];
 }
@@ -2028,51 +2024,80 @@ export async function proposalExists(
  * TO NUMBER
  * ---------------------------------------------------------- */
 
-function toNumber(
-  value: unknown,
-): number {
+function toNumber(value: unknown): number {
+  if (value === null || value === undefined) {
+    return 0;
+  }
+
   if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) {
+      throw new Error(
+        `Value is outside JavaScript safe integer range: ${value}`,
+      );
+    }
+
     return value;
   }
 
   if (typeof value === "bigint") {
-    return Number(value);
+    const num = Number(value);
+
+    if (!Number.isSafeInteger(num)) {
+      throw new Error(
+        "Value exceeds JavaScript safe integer range.",
+      );
+    }
+
+    return num;
   }
 
+  // Anchor BN
   if (
-    value &&
     typeof value === "object" &&
-    "toNumber" in value &&
-    typeof (
-      value as {
-        toNumber: () => number;
-      }
-    ).toNumber === "function"
+    value !== null &&
+    "toString" in value
   ) {
-    return (
-      value as {
-        toNumber: () => number;
-      }
-    ).toNumber();
+    const stringValue = String(
+      (value as { toString: () => string }).toString(),
+    );
+
+    const num = Number(stringValue);
+
+    if (!Number.isSafeInteger(num)) {
+      throw new Error(
+        `Value exceeds JavaScript safe integer range: ${stringValue}`,
+      );
+    }
+
+    return num;
   }
 
-  return Number(
-    value ?? 0,
-  );
+  const num = Number(value);
+
+  if (!Number.isSafeInteger(num)) {
+    throw new Error(
+      `Invalid or unsafe numeric value: ${String(value)}`,
+    );
+  }
+
+  return num;
 }
 
 /* ------------------------------------------------------------
  * TO STRING
  * ---------------------------------------------------------- */
 
-function toStringValue(
-  value: unknown,
-): string {
-  if (
-    value === undefined ||
-    value === null
-  ) {
+function toStringValue(value: unknown): string {
+  if (value === null || value === undefined) {
     return "0";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return value.toString();
   }
 
   if (typeof value === "bigint") {
@@ -2081,18 +2106,11 @@ function toStringValue(
 
   if (
     typeof value === "object" &&
+    value !== null &&
     "toString" in value &&
-    typeof (
-      value as {
-        toString: () => string;
-      }
-    ).toString === "function"
+    typeof (value as { toString?: unknown }).toString === "function"
   ) {
-    return (
-      value as {
-        toString: () => string;
-      }
-    ).toString();
+    return (value as { toString: () => string }).toString();
   }
 
   return String(value);

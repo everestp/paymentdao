@@ -327,73 +327,78 @@ export function GroupDetailPage() {
     }
 
     let cancelled = false;
-
     async function loadGroup() {
       try {
         setLoading(true);
         setError(null);
 
-        console.log(
-          'Loading on-chain group:',
-          id,
-        );
+        console.log("Loading on-chain group:", id);
+
+        if (!id) {
+          throw new Error("Group address is missing.");
+        }
 
         const result =
-          await fetchGroupDetailOnChain(
-            id,
-          );
+          await fetchGroupDetailOnChain(id);
 
         if (cancelled) {
           return;
         }
 
         /*
-         * IMPORTANT:
-         *
-         * result.group is the actual
-         * Anchor Group account.
+         * fetchGroupDetailOnChain() already returns
+         * the mapped OnChainGroup object directly.
          */
-        setChainGroup(
-          result.group,
-        );
+        setChainGroup(result);
 
         /*
-         * Proposals also come directly
-         * from Solana.
+         * Proposals are already included
+         * inside the OnChainGroup response.
          */
         setChainProposals(
           result.proposals ?? [],
         );
 
         /*
-         * Treasury balance comes from
-         * the treasury PDA account.
+         * Treasury balance is NOT returned by
+         * fetchGroupDetailOnChain().
+         *
+         * Fetch it separately if your paydao.ts
+         * exports getTreasuryBalance().
          */
-        setTreasuryBalance(
-          Number(
-            result.treasuryBalanceLamports ??
-              0,
-          ) /
-            LAMPORTS_PER_SOL,
+        try {
+          const treasuryBalance =
+            await getTreasuryBalance(id);
+
+          if (!cancelled) {
+            setTreasuryBalance(
+              treasuryBalance,
+            );
+
+            console.log(
+              "Treasury SOL:",
+              treasuryBalance,
+            );
+          }
+        } catch (treasuryError) {
+          console.error(
+            "Failed to fetch treasury balance:",
+            treasuryError,
+          );
+
+          if (!cancelled) {
+            setTreasuryBalance(0);
+          }
+        }
+
+        console.log(
+          "On-chain group loaded:",
+          result,
         );
 
         console.log(
-          'On-chain group loaded:',
-          result.group,
-        );
-
-        console.log(
-          'On-chain proposals:',
+          "On-chain proposals:",
           result.proposals,
-        );
-
-        console.log(
-          'Treasury SOL:',
-          Number(
-            result.treasuryBalanceLamports ??
-              0,
-          ) /
-            LAMPORTS_PER_SOL,
         );
       } catch (loadError) {
         if (cancelled) {
@@ -401,14 +406,14 @@ export function GroupDetailPage() {
         }
 
         console.error(
-          'Failed to load on-chain group:',
+          "Failed to load on-chain group:",
           loadError,
         );
 
         setError(
           loadError instanceof Error
             ? loadError.message
-            : 'Failed to load group from Solana.',
+            : "Failed to load group from Solana.",
         );
       } finally {
         if (!cancelled) {
