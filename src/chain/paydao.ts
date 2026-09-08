@@ -527,12 +527,10 @@ export interface OnChainProposal {
 
 export interface OnChainGroup {
   address: string;
-
-  treasuryAddress?: string;
+  treasuryAddress: string;
 
   name: string;
   description: string;
-
   creator: string;
 
   targetLamports: string;
@@ -1086,11 +1084,11 @@ export async function contributeOnChain(
   amount: number,
   currency: Currency,
 ): Promise<string> {
-  if (currency !== "SOL") {
-    throw new Error(
-      "Only SOL contributions are enabled.",
-    );
-  }
+  // if (currency !== "SOL") {
+  //   throw new Error(
+  //     "Only SOL contributions are enabled.",
+  //   );
+  // }
 
   if (
     !Number.isFinite(amount) ||
@@ -2310,4 +2308,108 @@ function mapProposal(
     executed:
       statusNumber === 3,
   };
+}
+
+
+/* ============================================================
+ * FETCH GROUP MEMBERS
+ * ========================================================== */
+
+export interface OnChainMember {
+  address: string;
+  group: string;
+  contributor: string;
+  amountLamports: string;
+  amountSol: number;
+  joinedAt: string;
+  raw: unknown;
+}
+
+export async function fetchGroupMembersOnChain(
+  groupAddress: string,
+): Promise<OnChainMember[]> {
+  const group = new PublicKey(groupAddress);
+  const program = getProgram();
+
+  const memberAccount = (program.account as any).member;
+
+  if (!memberAccount) {
+    console.warn(
+      'Anchor does not expose "member" account.',
+    );
+
+    return [];
+  }
+
+  const accounts = await memberAccount.all();
+
+  const result: OnChainMember[] = [];
+
+  for (const item of accounts) {
+    const data = item.account as any;
+
+    const memberGroup =
+      data.group ??
+      data.groupAddress ??
+      data.group_address;
+
+    if (!memberGroup) continue;
+
+    const memberGroupAddress =
+      getPublicKeyString(memberGroup);
+
+    if (
+      memberGroupAddress !==
+      group.toBase58()
+    ) {
+      continue;
+    }
+
+    const contributor =
+      getPublicKeyString(
+        data.contributor ??
+          data.member ??
+          data.owner,
+      );
+
+    const amountLamports =
+      toStringValue(
+        data.amountContributed ??
+          data.amount_contributed ??
+          data.contributedLamports ??
+          data.contributed_lamports ??
+          data.amount ??
+          0,
+      );
+
+    const joinedAt =
+      toStringValue(
+        data.joinedAt ??
+          data.joined_at ??
+          0,
+      );
+
+    result.push({
+      address:
+        item.publicKey.toBase58(),
+
+      group:
+        memberGroupAddress,
+
+      contributor,
+
+      amountLamports,
+
+      amountSol:
+        lamportsToSol(
+          amountLamports,
+        ),
+
+      joinedAt,
+
+      raw: data,
+    });
+  }
+
+  return result;
 }
