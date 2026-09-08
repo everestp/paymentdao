@@ -474,12 +474,15 @@ export default function GroupDetailPage() {
         "Group has not loaded yet.",
       );
     }
-
+    console.log(
+      "Contribution successful:",
+      amount,
+    );
     const signature =
       await contributeOnChain(
         chainGroup.address,
-        Number(amount),
-        currency,
+        Number(1),
+        "SOL",
       );
 
     console.log(
