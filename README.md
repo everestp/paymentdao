@@ -14,7 +14,6 @@
 
 ---
 
-## 🏆 BlitzX Hackathon
 
 PayDAO is built around one question:
 
