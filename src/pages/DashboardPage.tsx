@@ -300,6 +300,7 @@ const iconMap: Record<
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const {wallet} = useWallet()
 
   /*
    * Wallet Adapter is the source of truth.
@@ -862,9 +863,11 @@ export function DashboardPage() {
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-heading font-semibold text-txprim mb-1">
-            Good evening,{" "}
+          Welcome,{" "}
             <span className="text-cyan">
-              Everest
+              {shortenAddress(
+                walletAddress,
+              )}
             </span>
           </h1>
 
@@ -889,7 +892,7 @@ export function DashboardPage() {
 
 
 
-      
+
 
           <PixelButton
             size="sm"
