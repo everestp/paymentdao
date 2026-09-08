@@ -1,23 +1,23 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
-import { AppProvider, useApp } from '@/store/AppContext';
 import { AppShell } from '@/components/layout/AppShell';
 import { ToastContainer } from '@/components/retro/Toast';
-import { LoginPage } from '@/pages/LoginPage';
-import { OnboardingPage } from '@/pages/OnboardingPage';
-import { DashboardPage } from '@/pages/DashboardPage';
-import { WalletPage } from '@/pages/WalletPage';
-import { SendPage } from '@/pages/SendPage';
-import { ReceivePage } from '@/pages/ReceivePage';
-import { PaymentsPage } from '@/pages/PaymentsPage';
-import { GroupsPage } from '@/pages/GroupsPage';
-import { GroupDetailPage } from '@/pages/GroupDetailPage';
-import { ProposalsPage } from '@/pages/ProposalsPage';
-import { ProposalDetailPage } from '@/pages/ProposalDetailPage';
-import { TransactionsPage } from '@/pages/TransactionsPage';
-import { MembersPage } from '@/pages/MembersPage';
 import { ActivityPage } from '@/pages/ActivityPage';
+import { DashboardPage } from '@/pages/DashboardPage';
+import { GroupDetailPage } from '@/pages/GroupDetailPage';
+import { GroupsPage } from '@/pages/GroupsPage';
+import { LoginPage } from '@/pages/LoginPage';
+import { MembersPage } from '@/pages/MembersPage';
+import { OnboardingPage } from '@/pages/OnboardingPage';
+import { PaymentsPage } from '@/pages/PaymentsPage';
+import { ProposalDetailPage } from '@/pages/ProposalDetailPage';
+import { ProposalsPage } from '@/pages/ProposalsPage';
+import { ReceivePage } from '@/pages/ReceivePage';
+import { SendPage } from '@/pages/SendPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { TransactionsPage } from '@/pages/TransactionsPage';
+import { WalletPage } from '@/pages/WalletPage';
+import { AppProvider, useApp } from '@/store/AppContext';
+import { useEffect } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -26,10 +26,12 @@ function ScrollToTop() {
 }
 
 function ProtectedRoutes() {
-  // const { isLoggedIn, hasOnboarded } = useApp();
+  const { isWalletConnected, hasOnboarded } = useApp();
   const location = useLocation();
 
-
+  if (!isWalletConnected) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
 
   if (!hasOnboarded && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />;
@@ -58,12 +60,12 @@ function ProtectedRoutes() {
 }
 
 function AppRoutes() {
-  const { isLoggedIn, hasOnboarded } = useApp();
+  const { isWalletConnected, hasOnboarded } = useApp();
 
   return (
     <Routes>
-      <Route path="/login" element={isLoggedIn ? <Navigate to={hasOnboarded ? '/dashboard' : '/onboarding'} replace /> : <LoginPage />} />
-      <Route path="/onboarding" element={isLoggedIn ? <OnboardingPage /> : <Navigate to="/login" replace />} />
+      <Route path="/login" element={isWalletConnected ? <Navigate to={hasOnboarded ? '/dashboard' : '/onboarding'} replace /> : <LoginPage />} />
+      <Route path="/onboarding" element={isWalletConnected ? <OnboardingPage /> : <Navigate to="/login" replace />} />
       <Route path="/*" element={<ProtectedRoutes />} />
     </Routes>
   );

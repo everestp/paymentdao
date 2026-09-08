@@ -1,10 +1,10 @@
 import {
+  connectWallet,
   contributeOnChain,
   createGroupOnChain,
   createProposalOnChain,
-  voteOnProposalOnChain,
-  connectWallet,
   getConnectedWallet,
+  voteOnProposalOnChain,
 } from '@/chain/paydao';
 
 import { mockData } from '@/data/mockData';
@@ -93,6 +93,8 @@ export interface WalletUser {
 ========================================================= */
 
 export interface AppState {
+  hasOnboarded: boolean;
+  completeOnboarding: () => void;
   groups: GroupData[];
   proposals: Proposal[];
   contributions: Contribution[];
@@ -114,6 +116,7 @@ export interface AppState {
 
   connectWallet: () => Promise<PublicKey>;
   disconnectWallet: () => void;
+  logout: () => void;
 
   /*
    * Toast
@@ -367,6 +370,10 @@ export function AppProvider({
   ] =
     useState(false);
 
+  const [hasOnboarded, setHasOnboarded] = useState(
+    () => localStorage.getItem('paydao_onboarded') === 'true',
+  );
+
   /*
    * Wallet is the identity.
    */
@@ -456,6 +463,17 @@ export function AppProvider({
     useCallback(() => {
       setWalletAddress(null);
     }, []);
+
+  const completeOnboarding = useCallback(() => {
+    setHasOnboarded(true);
+    localStorage.setItem('paydao_onboarded', 'true');
+  }, []);
+
+  const logout = useCallback(() => {
+    setWalletAddress(null);
+    setHasOnboarded(false);
+    localStorage.removeItem('paydao_onboarded');
+  }, []);
 
   /* =======================================================
      PERSIST STATE
@@ -1401,30 +1419,15 @@ export function AppProvider({
            Create on-chain
         ------------------------------------------------ */
 
-        const chainResult =
-          await createGroupOnChain({
-            name:
-              data.name,
-
-            description:
-              data.description,
-
-            targetAmount:
-              data.requiredAmount,
-
-            currency:
-              data.currency,
-
-            visibility:
-              data.visibility,
-
-            threshold:
-              data.votingThreshold,
-
-            deadline:
-              data.deadline ?? '',
-          });
-
+        const chainResult = await createGroupOnChain({
+          name: data.name,
+          description: data.description,
+          requiredAmount: data.requiredAmount,
+          currency: data.currency,
+          visibility: data.visibility,
+          votingThreshold: data.votingThreshold,
+          deadline: data.deadline,
+        });
         /*
          * PDA is the real group ID.
          */
@@ -1697,6 +1700,8 @@ export function AppProvider({
   ======================================================= */
 
   const value: AppState = {
+    hasOnboarded,
+    completeOnboarding,
     groups,
     proposals,
     contributions,
@@ -1721,6 +1726,8 @@ export function AppProvider({
 
     disconnectWallet:
       handleDisconnectWallet,
+
+    logout,
 
     /*
      * Toast

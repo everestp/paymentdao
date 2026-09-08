@@ -1,25 +1,31 @@
-import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, ArrowLeftRight, Wallet, FileText, Receipt, Activity, Settings, ChevronRight, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useApp } from '@/store/AppContext';
+import { Activity, ArrowLeftRight, ChevronRight, FileText, LayoutDashboard, Receipt, Settings, Users, Wallet, Zap } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 
 const navItems = [
-  { section: 'MAIN', items: [
-    { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-    { label: 'Groups', icon: Users, path: '/groups' },
-    { label: 'Payments', icon: ArrowLeftRight, path: '/payments' },
-    { label: 'Wallet', icon: Wallet, path: '/wallet' },
-  ]},
-  { section: 'WORKSPACE', items: [
-    { label: 'Proposals', icon: FileText, path: '/proposals' },
-    { label: 'Send', icon: ArrowLeftRight, path: '/send' },
-    { label: 'Receive', icon: Receipt, path: '/receive' },
-  ]},
-  { section: 'SYSTEM', items: [
-    { label: 'Transactions', icon: Receipt, path: '/transactions' },
-    { label: 'Activity', icon: Activity, path: '/activity' },
-    { label: 'Settings', icon: Settings, path: '/settings' },
-  ]},
+  {
+    section: 'MAIN', items: [
+      { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+      { label: 'Groups', icon: Users, path: '/groups' },
+      { label: 'Payments', icon: ArrowLeftRight, path: '/payments' },
+      { label: 'Wallet', icon: Wallet, path: '/wallet' },
+    ]
+  },
+  {
+    section: 'WORKSPACE', items: [
+      { label: 'Proposals', icon: FileText, path: '/proposals' },
+      { label: 'Send', icon: ArrowLeftRight, path: '/send' },
+      { label: 'Receive', icon: Receipt, path: '/receive' },
+    ]
+  },
+  {
+    section: 'SYSTEM', items: [
+      { label: 'Transactions', icon: Receipt, path: '/transactions' },
+      { label: 'Activity', icon: Activity, path: '/activity' },
+      { label: 'Settings', icon: Settings, path: '/settings' },
+    ]
+  },
 ];
 
 export function Sidebar() {
@@ -72,7 +78,7 @@ export function Sidebar() {
             <span className="w-2 h-2 rounded-full bg-green blink" />
             <span className="text-xs font-medium text-green">Connected as Demo</span>
           </div>
-          <div className="text-xs font-mono text-txsec truncate">{user.walletAddress}</div>
+          <div className="text-xs font-mono text-txsec truncate">{user?.walletAddress || 'Not connected'}</div>
           <div className="flex items-center gap-1 mt-1">
             <Zap className="w-3 h-3 text-yellow" />
             <span className="text-xs text-txdim">Solana • Demo Network</span>

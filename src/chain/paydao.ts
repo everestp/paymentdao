@@ -97,9 +97,7 @@ export interface CreateGroupChainResult {
   treasuryAddress: string;
   signature: string;
   groupKey: Uint8Array;
-}
-
-/* ============================================================
+}/* ============================================================
  * PRIVATE VOTE
  * ========================================================== */
 
@@ -296,17 +294,52 @@ export async function connectedProgram(): Promise<{
 export async function createGroupOnChain(
   input: CreateGroupChainInput,
 ): Promise<CreateGroupChainResult> {
+  /* ==========================================================
+   * VALIDATE CURRENCY
+   * ======================================================== */
 
   if (input.currency !== "SOL") {
     throw new Error(
-      "The current on-chain milestone supports SOL groups only.",
+      "The current on-chain program supports SOL groups only.",
     );
   }
 
+  /* ==========================================================
+   * VALIDATE GROUP NAME
+   * ======================================================== */
+
+  const name = input.name.trim();
+
+  if (!name) {
+    throw new Error("Group name is required.");
+  }
+
+  if (name.length > 64) {
+    throw new Error(
+      "Group name cannot be longer than 64 characters.",
+    );
+  }
+
+  /* ==========================================================
+   * VALIDATE DESCRIPTION
+   * ======================================================== */
+
+  const description =
+    input.description.trim() ||
+    "A collaborative funding pool.";
+
+  if (description.length > 256) {
+    throw new Error(
+      "Group description cannot be longer than 256 characters.",
+    );
+  }
+
+  /* ==========================================================
+   * VALIDATE TARGET
+   * ======================================================== */
+
   if (
-    !Number.isFinite(
-      input.requiredAmount,
-    ) ||
+    !Number.isFinite(input.requiredAmount) ||
     input.requiredAmount <= 0
   ) {
     throw new Error(
@@ -314,7 +347,37 @@ export async function createGroupOnChain(
     );
   }
 
+  /*
+   * Convert SOL to lamports.
+   *
+   * 1 SOL = 1,000,000,000 lamports
+   */
+  const targetLamportsNumber = Math.round(
+    input.requiredAmount * 1_000_000_000,
+  );
+
+  if (!Number.isSafeInteger(targetLamportsNumber)) {
+    throw new Error(
+      "Required funding amount is too large.",
+    );
+  }
+
+  if (targetLamportsNumber <= 0) {
+    throw new Error(
+      "Required funding is too small. Enter a larger SOL amount.",
+    );
+  }
+
+  const targetLamports = new BN(
+    targetLamportsNumber,
+  );
+
+  /* ==========================================================
+   * VALIDATE VOTING THRESHOLD
+   * ======================================================== */
+
   if (
+    !Number.isFinite(input.votingThreshold) ||
     input.votingThreshold < 1 ||
     input.votingThreshold > 100
   ) {
@@ -323,129 +386,231 @@ export async function createGroupOnChain(
     );
   }
 
+  /*
+   * Convert percentage to basis points.
+   *
+   * 60% = 6000 BPS
+   * 75% = 7500 BPS
+   * 100% = 10000 BPS
+   */
+  const votingThresholdBps = Math.round(
+    input.votingThreshold * 100,
+  );
+
+  /* ==========================================================
+   * CONNECT WALLET + PROGRAM
+   * ======================================================== */
+
   const {
     publicKey,
     program,
   } = await connectedProgram();
 
-  /* ----------------------------------------------------------
-   * RANDOM GROUP KEY
-   * -------------------------------------------------------- */
-
-  const groupKey =
-    crypto.getRandomValues(
-      new Uint8Array(16),
-    );
-
-  /* ----------------------------------------------------------
-   * GROUP PDA
+  /* ==========================================================
+   * GENERATE RANDOM GROUP KEY
    *
-   * ["group", creator, groupKey]
-   * -------------------------------------------------------- */
+   * Rust:
+   *
+   * ["group", creator, group_key]
+   *
+   * group_key = [u8; 16]
+   * ======================================================== */
 
-  const [group] =
-    deriveGroupPda(
-      publicKey,
-      groupKey,
-    );
+  const groupKey = crypto.getRandomValues(
+    new Uint8Array(16),
+  );
 
-  /* ----------------------------------------------------------
-   * TREASURY PDA
+  /* ==========================================================
+   * DERIVE GROUP PDA
+   * ======================================================== */
+
+  const [group] = deriveGroupPda(
+    publicKey,
+    groupKey,
+  );
+
+  /* ==========================================================
+   * DERIVE TREASURY PDA
+   *
+   * Rust:
    *
    * ["treasury", group]
-   * -------------------------------------------------------- */
+   * ======================================================== */
 
-  const [treasury] =
-    deriveTreasuryPda(group);
+  const [treasury] = deriveTreasuryPda(
+    group,
+  );
 
-  /* ----------------------------------------------------------
+  /* ==========================================================
    * DEADLINE
-   * -------------------------------------------------------- */
+   * ======================================================== */
 
-  const deadline =
-    input.deadline
-      ? Math.floor(
-          new Date(
-            input.deadline,
-          ).getTime() / 1000,
-        )
-      : 0;
+  let deadline = 0;
 
-  if (
-    deadline !== 0 &&
-    deadline <=
-      Math.floor(
-        Date.now() / 1000,
-      )
-  ) {
-    throw new Error(
-      "Deadline must be in the future.",
+  if (input.deadline) {
+    const parsedDate = new Date(
+      input.deadline,
     );
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      throw new Error(
+        "Invalid group deadline.",
+      );
+    }
+
+    deadline = Math.floor(
+      parsedDate.getTime() / 1000,
+    );
+
+    const now = Math.floor(
+      Date.now() / 1000,
+    );
+
+    if (deadline <= now) {
+      throw new Error(
+        "Group deadline must be in the future.",
+      );
+    }
   }
 
-  /* ----------------------------------------------------------
-   * SOL -> LAMPORTS
-   * -------------------------------------------------------- */
-
-  const targetLamports =
-    new BN(
-      Math.round(
-        input.requiredAmount *
-          1_000_000_000,
-      ),
-    );
-
-  /* ----------------------------------------------------------
-   * PERCENTAGE -> BASIS POINTS
+  /* ==========================================================
+   * VISIBILITY
    *
-   * 50% = 5000 BPS
-   * -------------------------------------------------------- */
+   * Rust:
+   *
+   * public  = 0
+   * private = 1
+   * ======================================================== */
 
-  const votingThresholdBps =
-    Math.round(
-      input.votingThreshold * 100,
+  const visibility =
+    input.visibility === "private"
+      ? 1
+      : 0;
+
+  /* ==========================================================
+   * DEBUG
+   * ======================================================== */
+
+  console.log("=================================");
+  console.log("CREATE GROUP");
+  console.log("=================================");
+  console.log("Creator:", publicKey.toBase58());
+  console.log("Name:", name);
+  console.log("Description:", description);
+  console.log(
+    "Required SOL:",
+    input.requiredAmount,
+  );
+  console.log(
+    "Target lamports:",
+    targetLamports.toString(),
+  );
+  console.log(
+    "Visibility:",
+    visibility,
+  );
+  console.log(
+    "Voting threshold:",
+    input.votingThreshold,
+  );
+  console.log(
+    "Voting threshold BPS:",
+    votingThresholdBps,
+  );
+  console.log(
+    "Deadline:",
+    deadline,
+  );
+  console.log(
+    "Group PDA:",
+    group.toBase58(),
+  );
+  console.log(
+    "Treasury PDA:",
+    treasury.toBase58(),
+  );
+  console.log("=================================");
+
+  /* ==========================================================
+   * INITIALIZE GROUP
+   *
+   * Rust:
+   *
+   * initialize_group(
+   *     name,
+   *     description,
+   *     visibility,
+   *     group_key,
+   *     target_lamports,
+   *     deadline,
+   *     voting_threshold_bps,
+   *     privacy_authority,
+   * )
+   * ======================================================== */
+
+  try {
+    const signature =
+      await program.methods
+        .initializeGroup(
+          name,
+          description,
+          visibility,
+          Array.from(groupKey),
+          targetLamports,
+          new BN(deadline),
+          votingThresholdBps,
+          publicKey,
+        )
+        .accounts({
+          group,
+          treasury,
+          creator: publicKey,
+          systemProgram:
+            SystemProgram.programId,
+        })
+        .rpc({
+          commitment: COMMITMENT,
+        });
+
+    /* ========================================================
+     * SUCCESS
+     * ====================================================== */
+
+    console.log(
+      "Group created successfully:",
+      signature,
     );
 
-  /* ----------------------------------------------------------
-   * INITIALIZE GROUP
-   * -------------------------------------------------------- */
+    return {
+      groupAddress:
+        group.toBase58(),
 
-  const signature =
-    await program.methods
-      .initializeGroup(
-        input.name,
-        input.description,
-        input.visibility === "private"
-          ? 1
-          : 0,
-        Array.from(groupKey),
-        targetLamports,
-        new BN(deadline),
-        votingThresholdBps,
-        publicKey,
-      )
-      .accounts({
-        group,
-        treasury,
-        creator: publicKey,
-        systemProgram:
-          SystemProgram.programId,
-      })
-      .rpc({
-        commitment: COMMITMENT,
-      });
+      treasuryAddress:
+        treasury.toBase58(),
 
-  return {
-    groupAddress:
-      group.toBase58(),
+      signature,
 
-    treasuryAddress:
-      treasury.toBase58(),
+      groupKey,
+    };
+  } catch (error) {
+    console.error(
+      "Failed to create group:",
+      error,
+    );
 
-    signature,
+    /*
+     * Preserve the original Anchor error.
+     * This makes the actual on-chain error visible
+     * in the UI instead of hiding it.
+     */
+    if (error instanceof Error) {
+      throw error;
+    }
 
-    groupKey,
-  };
+    throw new Error(
+      "Failed to create group on Solana.",
+    );
+  }
 }
 
 /* ============================================================

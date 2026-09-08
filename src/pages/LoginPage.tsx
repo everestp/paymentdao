@@ -1,14 +1,14 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Wallet, Vote, Zap, ArrowRight, Eye, EyeOff } from 'lucide-react';
-import { useApp } from '@/store/AppContext';
-import { DEMO_CREDENTIALS } from '@/data/mockData';
 import { PixelButton } from '@/components/retro/PixelButton';
 import { PixelCard } from '@/components/retro/PixelCard';
+import { useApp } from '@/store/AppContext';
+import { motion } from 'framer-motion';
+import { ArrowRight, Eye, EyeOff, Vote, Wallet, Zap } from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const { connectWallet, walletLoading } = useApp();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -17,15 +17,34 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
-    navigate("/dashboard")
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await connectWallet();
+      navigate('/onboarding');
+    } catch (connectError) {
+      setError(connectError instanceof Error ? connectError.message : 'Wallet connection failed.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDemoLogin = () => {
-     navigate("/dashboard")
+  const handleDemoLogin = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await connectWallet();
+      navigate('/onboarding');
+    } catch (connectError) {
+      setError(connectError instanceof Error ? connectError.message : 'Wallet connection failed.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const fillDemo = () => { setEmail(DEMO_CREDENTIALS.email); setPassword(DEMO_CREDENTIALS.password); };
+  const fillDemo = () => undefined;
 
   return (
     <div className="min-h-screen bg-bgdark grid-bg flex items-center justify-center p-4 relative overflow-hidden">
@@ -96,11 +115,7 @@ export function LoginPage() {
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-xs font-semibold text-yellow uppercase tracking-wide">Demo Environment</span>
               </div>
-              <div className="text-xs text-txsec space-y-0.5">
-                <div>Email: <span className="text-cyan font-mono">{DEMO_CREDENTIALS.email}</span></div>
-                <div>Password: <span className="text-cyan font-mono">{DEMO_CREDENTIALS.password}</span></div>
-              </div>
-              <button onClick={fillDemo} className="text-xs text-yellow hover:text-yellow/80 mt-1 underline">Click to fill credentials</button>
+              <div className="text-xs text-txsec">Connect a Solana wallet to use PayDAO. Your wallet is your identity.</div>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-4">
@@ -129,8 +144,8 @@ export function LoginPage() {
 
               {error && <div className="card p-3 bg-red/10" style={{ borderColor: 'rgba(255,56,96,0.3)' }}><p className="text-sm text-red">{error}</p></div>}
 
-              <PixelButton type="submit" variant="primary" size="lg" className="w-full" disabled={loading}>
-                {loading ? <><span className="inline-block w-4 h-4 border-2 border-bgdark border-t-transparent rounded-full spin" /> Signing in...</> : <>Sign In <ArrowRight className="w-4 h-4" /></>}
+              <PixelButton type="submit" variant="primary" size="lg" className="w-full" disabled={loading || walletLoading}>
+                {loading || walletLoading ? <><span className="inline-block w-4 h-4 border-2 border-bgdark border-t-transparent rounded-full spin" /> Connecting...</> : <>Connect Wallet <ArrowRight className="w-4 h-4" /></>}
               </PixelButton>
             </form>
 
@@ -140,12 +155,12 @@ export function LoginPage() {
               <div className="flex-1 h-px bg-bdlight" />
             </div>
 
-            <PixelButton onClick={handleDemoLogin} variant="green" size="lg" className="w-full" disabled={loading}>
-              {loading ? 'Loading...' : 'Continue with Demo Account'}
+            <PixelButton onClick={handleDemoLogin} variant="green" size="lg" className="w-full" disabled={loading || walletLoading}>
+              {loading || walletLoading ? 'Connecting...' : 'Connect Solana Wallet'}
             </PixelButton>
 
             <p className="text-sm text-txsec text-center mt-5">
-              New to PayDAO? <button onClick={handleDemoLogin} className="text-cyan hover:text-cyan/80 underline">Create an account</button>
+              New to PayDAO? Connect a wallet to get started.
             </p>
           </PixelCard>
         </motion.div>
