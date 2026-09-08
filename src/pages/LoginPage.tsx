@@ -1,4 +1,6 @@
-import { PixelCard } from "@/components/retro/PixelCard";
+
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
@@ -6,10 +8,10 @@ import {
   Wallet,
   Zap,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useWallet } from "@solana/wallet-adapter-react";
+
+import { PixelCard } from "@/components/retro/PixelCard";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -20,26 +22,32 @@ export function LoginPage() {
     publicKey,
   } = useWallet();
 
-  const [error, setError] = useState("");
-
   /*
-   * ----------------------------------------------------------
+   * ==========================================================
    * REDIRECT AFTER WALLET CONNECTION
-   * ----------------------------------------------------------
+   *
+   * Wallet disconnected:
+   *     Stay on /login
+   *
+   * Wallet connected:
+   *     Automatically go to /onboarding
+   * ==========================================================
    */
 
   useEffect(() => {
-    if (connected && publicKey) {
-      navigate("/onboarding", {
-        replace: true,
-      });
+    if (!connected || !publicKey) {
+      return;
     }
+
+    navigate("/onboarding", {
+      replace: true,
+    });
   }, [connected, publicKey, navigate]);
 
   /*
-   * ----------------------------------------------------------
+   * ==========================================================
    * FEATURES
-   * ----------------------------------------------------------
+   * ==========================================================
    */
 
   const features = [
@@ -65,8 +73,9 @@ export function LoginPage() {
 
   return (
     <div className="min-h-screen bg-bgdark grid-bg flex items-center justify-center p-4 relative overflow-hidden">
+
       {/* ======================================================
-          BACKGROUND ANIMATION
+          BACKGROUND
       ====================================================== */}
 
       <div className="absolute inset-0 pointer-events-none">
@@ -75,8 +84,8 @@ export function LoginPage() {
             key={i}
             className="absolute w-32 h-32 rounded-2xl border border-bdlight/30"
             style={{
-              left: `${10 + i * 15}%`,
-              top: `${20 + (i % 3) * 25}%`,
+              left: `${ 10 + i * 15 }% `,
+              top: `${ 20 + (i % 3) * 25 }% `,
             }}
             animate={{
               y: [0, -20, 0],
@@ -96,11 +105,13 @@ export function LoginPage() {
       ====================================================== */}
 
       <div className="relative w-full max-w-5xl grid lg:grid-cols-2 gap-6 lg:gap-12 items-center">
+
         {/* ====================================================
             LEFT SIDE
         ==================================================== */}
 
         <div className="hidden lg:flex flex-col gap-6">
+
           <motion.div
             initial={{
               opacity: 0,
@@ -114,8 +125,11 @@ export function LoginPage() {
               duration: 0.5,
             }}
           >
+
             {/* Logo */}
+
             <div className="flex items-center gap-3 mb-6">
+
               <div
                 className="w-12 h-12 flex items-center justify-center bg-cyan text-bgdark font-heading font-bold text-xl rounded-xl"
                 style={{
@@ -135,12 +149,15 @@ export function LoginPage() {
                   v2.0 Demo Environment
                 </div>
               </div>
+
             </div>
 
             {/* Heading */}
+
             <h1 className="text-3xl font-heading font-semibold text-txprim mb-4 leading-tight">
               Money,
               <br />
+
               <span className="text-cyan">
                 decided
               </span>{" "}
@@ -153,10 +170,13 @@ export function LoginPage() {
               proposals, and watch your community grow
               — without the spreadsheet chaos.
             </p>
+
           </motion.div>
 
           {/* Features */}
+
           <div className="grid gap-3">
+
             {features.map((feature, i) => {
               const Icon = feature.icon;
 
@@ -177,11 +197,12 @@ export function LoginPage() {
                   }}
                 >
                   <PixelCard className="flex items-center gap-4 p-4">
+
                     <div
                       className="w-10 h-10 flex items-center justify-center shrink-0 rounded-lg"
                       style={{
-                        background: `${feature.color}15`,
-                        border: `1px solid ${feature.color}40`,
+                        background: `${ feature.color } 15`,
+                        border: `1px solid ${ feature.color } 40`,
                       }}
                     >
                       <Icon
@@ -201,11 +222,14 @@ export function LoginPage() {
                         {feature.desc}
                       </div>
                     </div>
+
                   </PixelCard>
                 </motion.div>
               );
             })}
+
           </div>
+
         </div>
 
         {/* ====================================================
@@ -225,9 +249,13 @@ export function LoginPage() {
             duration: 0.5,
           }}
         >
+
           <PixelCard className="p-6 md:p-8">
-            {/* Mobile logo */}
+
+            {/* Mobile Logo */}
+
             <div className="lg:hidden flex items-center gap-3 mb-6">
+
               <div
                 className="w-10 h-10 flex items-center justify-center bg-cyan text-bgdark font-heading font-bold rounded-lg"
                 style={{
@@ -247,10 +275,13 @@ export function LoginPage() {
                   Demo Environment
                 </div>
               </div>
+
             </div>
 
             {/* Header */}
+
             <div className="mb-6">
+
               <h2 className="text-xl font-heading font-semibold text-txprim mb-1">
                 Connect Wallet
               </h2>
@@ -258,6 +289,7 @@ export function LoginPage() {
               <p className="text-sm text-txsec">
                 Your Solana wallet is your identity.
               </p>
+
             </div>
 
             {/* =================================================
@@ -271,7 +303,9 @@ export function LoginPage() {
                   "rgba(0,212,230,0.3)",
               }}
             >
+
               <div className="flex items-start gap-3">
+
                 <div
                   className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
                   style={{
@@ -285,6 +319,7 @@ export function LoginPage() {
                 </div>
 
                 <div>
+
                   <div className="text-xs font-semibold text-cyan uppercase tracking-wide mb-1">
                     Wallet Authentication
                   </div>
@@ -294,15 +329,19 @@ export function LoginPage() {
                     PayDAO. No email or password is
                     required.
                   </p>
+
                 </div>
+
               </div>
+
             </div>
 
             {/* =================================================
-                WALLET ADAPTER BUTTON
+                WALLET ADAPTER
             ================================================= */}
 
             <div className="wallet-connect-wrapper">
+
               <WalletMultiButton
                 style={{
                   width: "100%",
@@ -316,6 +355,7 @@ export function LoginPage() {
                   fontWeight: 600,
                 }}
               />
+
             </div>
 
             {/* =================================================
@@ -324,34 +364,18 @@ export function LoginPage() {
 
             {connecting && (
               <div className="mt-4 flex items-center justify-center gap-2">
+
                 <span className="inline-block w-4 h-4 border-2 border-cyan border-t-transparent rounded-full spin" />
 
                 <span className="text-xs text-txsec">
                   Connecting wallet...
                 </span>
+
               </div>
             )}
 
             {/* =================================================
-                ERROR
-            ================================================= */}
-
-            {error && (
-              <div
-                className="card p-3 mt-4 bg-red/10"
-                style={{
-                  borderColor:
-                    "rgba(255,56,96,0.3)",
-                }}
-              >
-                <p className="text-sm text-red">
-                  {error}
-                </p>
-              </div>
-            )}
-
-            {/* =================================================
-                CONNECTED WALLET
+                CONNECTED
             ================================================= */}
 
             {connected && publicKey && (
@@ -366,8 +390,11 @@ export function LoginPage() {
                 }}
                 className="mt-5"
               >
+
                 <div className="card bg-bgdark p-3">
+
                   <div className="flex items-center justify-between">
+
                     <span className="text-xs text-txdim uppercase tracking-wide">
                       Connected
                     </span>
@@ -375,23 +402,23 @@ export function LoginPage() {
                     <span className="text-xs text-green font-mono">
                       ● ONLINE
                     </span>
+
                   </div>
 
                   <div className="mt-2 text-xs font-mono text-txsec break-all">
                     {publicKey.toBase58()}
                   </div>
+
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate("/onboarding")
-                  }
-                  className="w-full mt-3 flex items-center justify-center gap-2 text-sm text-cyan hover:text-cyan/80 transition-colors"
-                >
+                {/* Informational only.
+                    Actual navigation is handled by useEffect. */}
+
+                <div className="w-full mt-3 flex items-center justify-center gap-2 text-sm text-cyan">
                   Continue to PayDAO
                   <ArrowRight className="w-4 h-4" />
-                </button>
+                </div>
+
               </motion.div>
             )}
 
@@ -405,15 +432,21 @@ export function LoginPage() {
             </p>
 
             <div className="mt-4 pt-4 border-t border-bdlight">
+
               <p className="text-[11px] text-txdim text-center leading-relaxed">
                 PayDAO uses your wallet address as your
                 identity. Your private keys never leave
                 your wallet.
               </p>
+
             </div>
+
           </PixelCard>
+
         </motion.div>
+
       </div>
+
     </div>
   );
 }

@@ -27,7 +27,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { MembersPage } from "@/pages/MembersPage";
 import { OnboardingPage } from "@/pages/OnboardingPage";
 import { PaymentsPage } from "@/pages/PaymentsPage";
-import  ProposalDetailPage  from "@/pages/ProposalDetailPage";
+import ProposalDetailPage from "@/pages/ProposalDetailPage";
 import { ProposalsPage } from "@/pages/ProposalsPage";
 import { ReceivePage } from "@/pages/ReceivePage";
 import { SendPage } from "@/pages/SendPage";
@@ -43,6 +43,7 @@ import {
   AppProvider,
   useApp,
 } from "@/store/AppContext";
+import { useWallet } from "@solana/wallet-adapter-react";
 
 /* ============================================================
  * SCROLL TO TOP
@@ -63,25 +64,25 @@ function ScrollToTop() {
 }
 
 /* ============================================================
- * PROTECTED ROUTES
+ * PROTECTED APPLICATION
  *
- * Everything inside this component requires
- * a connected Solana wallet.
+ * Everything here requires a connected wallet.
  * ========================================================== */
 
 function ProtectedRoutes() {
   const { walletConnected } = useApp();
-
   const location = useLocation();
 
   /* ----------------------------------------------------------
    * WALLET NOT CONNECTED
+   *
+   * Send user back to homepage.
    * -------------------------------------------------------- */
 
   if (!walletConnected) {
     return (
       <Navigate
-        to="/login"
+        to="/"
         state={{
           from: location,
         }}
@@ -91,7 +92,7 @@ function ProtectedRoutes() {
   }
 
   /* ----------------------------------------------------------
-   * PROTECTED APPLICATION
+   * WALLET CONNECTED
    * -------------------------------------------------------- */
 
   return (
@@ -166,16 +167,6 @@ function ProtectedRoutes() {
           element={<ProposalsPage />}
         />
 
-        {/* ----------------------------------------------------
-         * PROPOSAL DETAIL
-         *
-         * Example:
-         *
-         * /proposals/7xKX...
-         *
-         * :id contains the proposal PDA.
-         * -------------------------------------------------- */}
-
         <Route
           path="/proposals/:id"
           element={<ProposalDetailPage />}
@@ -218,9 +209,7 @@ function ProtectedRoutes() {
         />
 
         {/* ====================================================
-         * PROTECTED FALLBACK
-         *
-         * Any unknown protected URL goes to dashboard.
+         * UNKNOWN PROTECTED ROUTE
          * ================================================== */}
 
         <Route
@@ -239,23 +228,28 @@ function ProtectedRoutes() {
 }
 
 /* ============================================================
- * PUBLIC / APPLICATION ROUTES
+ * APPLICATION ROUTES
  * ========================================================== */
 
 function AppRoutes() {
-  const { walletConnected } = useApp();
+  const { connected } = useWallet();
 
   return (
     <Routes>
 
       {/* ======================================================
-       * LOGIN
+       * HOMEPAGE
+       *
+       * /
+       *
+       * Disconnected → LoginPage
+       * Connected → Dashboard
        * ==================================================== */}
 
       <Route
-        path="/login"
+        path="/"
         element={
-          walletConnected ? (
+          connected ? (
             <Navigate
               to="/dashboard"
               replace
@@ -269,19 +263,17 @@ function AppRoutes() {
       {/* ======================================================
        * ONBOARDING
        *
-       * Wallet must be connected.
-       *
-       * Currently NOT forced automatically.
+       * Wallet is required.
        * ==================================================== */}
 
       <Route
         path="/onboarding"
         element={
-          walletConnected ? (
+          connected ? (
             <OnboardingPage />
           ) : (
             <Navigate
-              to="/login"
+              to="/"
               replace
             />
           )
@@ -290,32 +282,11 @@ function AppRoutes() {
 
       {/* ======================================================
        * PROTECTED APPLICATION
-       *
-       * All remaining routes are handled by
-       * ProtectedRoutes.
        * ==================================================== */}
 
       <Route
         path="/*"
         element={<ProtectedRoutes />}
-      />
-
-      {/* ======================================================
-       * GLOBAL FALLBACK
-       * ==================================================== */}
-
-      <Route
-        path="*"
-        element={
-          <Navigate
-            to={
-              walletConnected
-                ? "/dashboard"
-                : "/login"
-            }
-            replace
-          />
-        }
       />
 
     </Routes>
@@ -331,22 +302,13 @@ export default function App() {
     <AppProvider>
       <BrowserRouter>
 
-        {/* ----------------------------------------------------
-         * RESET SCROLL ON ROUTE CHANGE
-         * -------------------------------------------------- */}
-
+        {/* Scroll to top on route changes */}
         <ScrollToTop />
 
-        {/* ----------------------------------------------------
-         * APPLICATION ROUTES
-         * -------------------------------------------------- */}
-
+        {/* Application routes */}
         <AppRoutes />
 
-        {/* ----------------------------------------------------
-         * GLOBAL TOASTS
-         * -------------------------------------------------- */}
-
+        {/* Global Toasts */}
         <ToastContainer />
 
       </BrowserRouter>

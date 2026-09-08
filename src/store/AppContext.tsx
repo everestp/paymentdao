@@ -1001,6 +1001,7 @@ export function AppProvider({
 
       setUser(null);
     }, []);
+  
 
   /* ==========================================================
    * CONTEXT VALUE

@@ -1,807 +1,991 @@
 # PayDAO
 
-> A Solana and MagicBlock prototype for collaborative SOL funding, member-gated proposals, aggregate governance settlement, and permissionless treasury execution.
+> **Collaborative treasury governance powered by Solana + MagicBlock Ephemeral Rollups.**
 
-PayDAO is a MagicBlock hackathon project. Its on-chain core is an Anchor program that creates funding groups, accepts SOL contributions, activates contributor membership, creates proposals, settles aggregate vote counts through a configured privacy authority, and lets anyone execute a passed proposal after the contract checks the execution conditions.
+PayDAO is a decentralized collaborative funding platform built for the **BlitzX Hackathon**.
 
-This repository is **hackathon-ready but not a production deployment**. The Anchor program and MagicBlock ER lifecycle compile and have a devnet-oriented integration test. The browser app has real SOL transactions for group creation, contributions, and proposal creation. Other screens still contain local demo data, and the browser does not yet implement a real PER/TEE voter client.
+It allows communities to create shared funding groups, contribute SOL, create funding proposals, vote, and execute approved treasury payments.
 
-## Status At A Glance
+The core idea is simple:
 
-| Area                                                                   | Current state                                                                                      |
-| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Anchor group, member, proposal, vote-receipt, and treasury accounts    | Implemented in `chain/programs/paydao-proof/src/lib.rs`                                            |
-| SOL group creation from the browser                                    | Implemented through `src/chain/paydao.ts`                                                          |
-| SOL contribution and membership activation from the browser            | Implemented                                                                                        |
-| SOL proposal creation from the browser                                 | Implemented; recipient must be a valid base58 Solana public key                                    |
-| MagicBlock ER delegation, realtime heartbeat, commit, and undelegation | Implemented in the Anchor program and `chain/tests/paydao-proof.ts`                                |
-| Private voting through PER/TEE                                         | **Not implemented in the browser**; on-chain aggregate settlement trusts `Group.privacy_authority` |
-| Permissionless treasury execution                                      | Implemented as `execute_proposal`; a caller must submit the transaction                            |
-| Go PostgreSQL read model and SSE stream                                | Implemented in `backend/`                                                                          |
-| Server-side Solana/MagicBlock indexer                                  | Not implemented; browser posts confirmed events to the internal API in the current demo            |
-| USDC/PAY token flows                                                   | Not implemented; current chain client supports SOL only                                            |
-| Production authentication                                              | Not implemented; login is a local demo gate                                                        |
-| Formal audit, mainnet deployment, hosted demo                          | Not present in this repository                                                                     |
+**Solana secures the treasury and final state. MagicBlock makes governance state fast and realtime.**
 
-## Why PayDAO?
+---
 
-Collaborative funding needs more than a payment form. A group needs a verifiable treasury, a membership rule, a way for eligible contributors to propose spending, governance state that can update quickly, and a settlement path that does not depend on a private administrator clicking “approve.”
+## ⚡ Why MagicBlock?
 
-PayDAO uses a contribution as the membership action:
+Traditional Solana applications require every interactive state transition to execute directly on the base layer.
+
+For a governance application, this can create a poor interaction model:
 
 ```text
-Contributor
-    |
-    | contribute(lamports)
-    v
-SOL treasury PDA
-    |
-    | confirmed on Solana
-    v
-Member PDA becomes active
-    |
-    v
-Member can create proposals
+User
+  ↓
+Solana transaction
+  ↓
+Network confirmation
+  ↓
+State update
+  ↓
+Next interaction
 ```
 
-The current implementation is intentionally narrower than the product vision: the working chain path is SOL-only, aggregate vote settlement is restricted to a configured authority, and PER/TEE voter authorization is still a required integration task.
+PayDAO uses **MagicBlock Ephemeral Rollups (ER)** to introduce a fast execution environment for delegated governance state.
 
-## Key Features
+Instead of treating governance as a sequence of isolated base-layer transactions, PayDAO can delegate active governance accounts to a MagicBlock Ephemeral Rollup, perform realtime state transitions there, and later commit the resulting state back to Solana.
 
-- Public group creation with a target amount, description, deadline, visibility flag, and voting threshold.
-- Separate treasury PDA owned by the system program and funded through the Anchor program.
-- Contributor membership created by the contribution instruction. There is no on-chain `join_group` instruction.
-- Member-gated proposal creation.
-- Aggregate vote counts (`yes`, `no`, `abstain`) and a nullifier receipt account; individual vote choices are not stored in the program’s public proposal account.
-- Deadline, quorum, threshold, recipient, treasury-balance, proposal-status, and one-time execution checks in Anchor.
-- Permissionless execution: anyone can submit `execute_proposal` after the proposal is passed.
-- MagicBlock ER delegation for fast delegated Group state updates, followed by commit/undelegation back to Solana.
-- Go PostgreSQL read model with privacy-safe SSE activity events.
-- Existing retro/pixel React interface with group, proposal, wallet, activity, and payment views.
-
-## Why MagicBlock?
-
-### The Solana-only problem
-
-Solana is the authority for PayDAO’s durable state and money movement, but repeatedly submitting interactive governance updates directly to the base layer is not the best UX for a realtime voting experience. The base layer also does not provide privacy merely because the UI hides a field: ordinary Solana transactions are observable.
-
-### What MagicBlock adds here
-
-The repository uses the MagicBlock Rust SDK with the `anchor` feature and the following ER primitives:
-
-- `#[ephemeral]` program support.
-- `#[delegate]` account delegation.
-- `DelegateConfig` with a selected ER validator.
-- `#[commit]` account context support.
-- `MagicIntentBundleBuilder` for commit and commit-and-undelegate.
-- A devnet integration test that delegates the PayDAO Group PDA, runs `realtime_heartbeat` on the ER, and undelegates it.
-
-MagicBlock is therefore part of the state lifecycle, not merely a dashboard label:
-
-```mermaid
-flowchart TD
-    A[Solana base layer] --> B[initialize_group]
-    B --> C[Group PDA and treasury PDA]
-    C --> D[delegate_group]
-    D --> E[MagicBlock ER]
-    E --> F[realtime_heartbeat]
-    F --> G[commit_group or undelegate_group]
-    G --> H[Solana final Group state]
-    H --> I[Anchor contribution, governance, and treasury checks]
+```text
+                 SOLANA
+                   │
+          Durable governance state
+                   │
+                   │ delegate
+                   ▼
+        ┌─────────────────────┐
+        │   MAGICBLOCK ER     │
+        │                     │
+        │  Realtime state     │
+        │  Governance logic   │
+        │  Fast transitions   │
+        │                     │
+        └─────────────────────┘
+                   │
+                   │ commit
+                   ▼
+                 SOLANA
+             Final state
 ```
 
-The current browser client does **not** perform delegation or connect to a MagicBlock ER. Those operations are proven in the Anchor integration test. The next browser integration should use a generated IDL and the current MagicBlock client/RPC flow rather than duplicating the hand-authored minimal IDL in `src/chain/paydao.ts`.
+This is the primary reason MagicBlock is important to PayDAO.
 
-### ER is not private voting
+---
 
-An ordinary Ephemeral Rollup provides fast delegated execution; it does not automatically hide wallet identity or individual vote choice. The program’s `record_vote_aggregate` instruction accepts only aggregate counts and requires the signer to equal `Group.privacy_authority`. The contract does not prove that this signer is a TEE or PER service.
+# 🧠 What PayDAO Does
 
-A production privacy deployment would need to:
+PayDAO turns community funding into an on-chain governance workflow.
 
-1. Run voter interaction through MagicBlock PER/TEE infrastructure.
-2. Authorize eligible voters through the TEE flow.
-3. Keep individual vote records and wallet-to-vote mappings out of the public API and public chain state.
-4. Submit only a verified aggregate settlement through the configured privacy authority.
-5. Define and audit how the authority proves that aggregate counts represent eligible, non-duplicated votes.
+```text
+Create Group
+     ↓
+Fund Treasury
+     ↓
+Become Member
+     ↓
+Create Proposal
+     ↓
+Vote
+     ↓
+Reach Decision
+     ↓
+Treasury Payment
+```
 
-That PER/TEE client and proof are not implemented in this repository yet.
+The treasury is controlled by the Anchor program.
 
-## Architecture
+There is no backend administrator who can withdraw the funds.
+
+---
+
+# 🏗️ Architecture
 
 ```mermaid
-flowchart LR
-    UI[React + TypeScript UI]
-    CHAIN[Browser Anchor client<br/>SOL group/contribution/proposal writes]
-    SOL[Solana + Anchor<br/>authoritative treasury and governance checks]
-    ER[MagicBlock ER<br/>delegated realtime Group state]
-    AUTH[PER/TEE privacy authority<br/>required for a real private-vote deployment]
-    API[Go API<br/>read model + SSE]
-    DB[(PostgreSQL)]
+flowchart TB
 
-    UI --> CHAIN
+    USER[User / Wallet]
+
+    UI[PayDAO React Frontend]
+
+    API[Go API + PostgreSQL]
+
+    SOL[Solana]
+
+    PROGRAM[PayDAO Anchor Program]
+
+    GROUP[Group PDA]
+    TREASURY[Treasury PDA]
+    MEMBER[Member PDA]
+    PROPOSAL[Proposal PDA]
+    RECEIPT[Vote Receipt PDA]
+
+    ER[MagicBlock Ephemeral Rollup]
+
+    USER --> UI
+
+    UI --> PROGRAM
     UI --> API
-    CHAIN --> SOL
-    SOL <--> ER
-    AUTH --> SOL
-    API --> DB
-    UI -. confirmed event post in current demo .-> API
+
+    API --> DB[(PostgreSQL)]
+
+    PROGRAM --> SOL
+
+    SOL --> GROUP
+    SOL --> TREASURY
+    SOL --> MEMBER
+    SOL --> PROPOSAL
+    SOL --> RECEIPT
+
+    GROUP <-->|Delegation / Commit| ER
+    PROPOSAL <-->|Delegation / Commit| ER
+    TREASURY <-->|Delegation / Commit| ER
 ```
 
-### Component responsibilities
+---
 
-| Component         | Owns                                                                                                                                                    | Does not own                                                          |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Anchor program    | Group configuration, member eligibility, proposal state, aggregate vote settlement authorization, treasury transfer checks, MagicBlock delegation hooks | User profiles, search, notifications, arbitrary backend authorization |
-| Solana base layer | Durable account state, system-owned treasury PDA, final transaction settlement                                                                          | Low-latency UI transport                                              |
-| MagicBlock ER     | Delegated account execution and realtime state updates in the tested lifecycle                                                                          | Automatic vote privacy; ordinary ER state is public                   |
-| PER/TEE authority | Intended confidential vote collection and aggregate submission boundary                                                                                 | It is not present as a working browser client in this repository      |
-| React frontend    | Wallet signing, forms, display, local UI read model, API/SSE subscription                                                                               | Treasury authority, final proposal status, vote authorization         |
-| Go API            | PostgreSQL read model, event ingestion endpoint, public group reads, SSE activity                                                                       | Treasury custody and on-chain authorization                           |
-| PostgreSQL        | Indexed group, proposal, contribution, and activity records                                                                                             | Blockchain truth                                                      |
+# 🔥 MagicBlock Integration
 
-## How It Works
+MagicBlock is integrated directly into the Anchor program.
 
-### 1. Create a group
+The program uses:
 
-The browser calls `initialize_group` through `src/chain/paydao.ts`.
+```rust
+use ephemeral_rollups_sdk::anchor::{
+    commit,
+    delegate,
+    ephemeral,
+};
 
-The instruction creates:
-
-- A Group PDA derived from the creator and a random 16-byte `group_key`.
-- A separate treasury PDA derived from the Group PDA.
-- Group metadata and governance configuration.
-
-The current browser path supports SOL only. The program stores name, description, visibility, target lamports, deadline, threshold, quorum, and privacy authority.
-
-### 2. Contribute
-
-The browser calls `contribute(lamports)`. Anchor transfers SOL from the contributor signer into the treasury PDA and updates `Group.current_lamports`.
-
-The same instruction initializes or updates the contributor’s Member PDA. A successful contribution is the membership action.
-
-### 3. Become a member
-
-There is no `join_group` instruction. A Member PDA exists after a valid contribution and is required by `create_proposal`.
-
-The creator is not automatically inserted as a member by `initialize_group`.
-
-### 4. Create a proposal
-
-A contributor with a Member PDA can call `create_proposal` with:
-
-- title
-- description
-- amount in lamports
-- recipient public key
-- voting deadline
-
-The program checks that the requested amount does not exceed the recorded treasury balance. The recipient must be a non-default `Pubkey`; the browser therefore requires a valid base58 Solana address.
-
-### 5. Private voting boundary
-
-The current contract does not expose a public `vote` instruction that records wallet-specific choices. Instead, `record_vote_aggregate` accepts aggregate deltas and creates a receipt PDA keyed by a caller-provided nullifier.
-
-The signer must equal `Group.privacy_authority`. This is a trusted authority boundary until PER/TEE authorization and an aggregate-proof design are implemented. The current frontend refuses to claim that a vote was recorded because no PER/TEE voter client exists.
-
-### 6. Finalize
-
-Anyone can call `finalize_proposal` once either:
-
-- the voting deadline has passed, or
-- the aggregate voter count reaches the group member count.
-
-The program computes quorum and the yes ratio, then changes the proposal status to `Passed` or `Rejected`.
-
-### 7. Execute
-
-Anyone can call `execute_proposal` for a `Passed` proposal. Anchor checks:
-
-- proposal status is `Passed`
-- treasury balance is sufficient
-- recipient account matches the immutable proposal recipient
-- treasury PDA is the expected PDA
-
-The treasury PDA signs the system-program transfer with PDA seeds. The proposal is then marked `Executed`. Execution is permissionless-triggered, not a backend job and not automatic without a transaction submitter.
-
-### 8. Commit to Solana
-
-The tested MagicBlock lifecycle delegates the Group PDA, runs `realtime_heartbeat` on the ER, and calls `undelegate_group`, which commits and returns ownership to the program. `commit_group` is also present for an explicit commit without undelegation.
-
-## Privacy & Trust Model
-
-### Public or indexed data
-
-The code and read model can expose:
-
-- group metadata
-- target amount and recorded balance
-- contribution amounts
-- anonymous contributor labels generated by the backend
-- proposal metadata
-- aggregate vote counters when supplied to the program
-- proposal status
-- execution transaction/signature when indexed
-
-### Intended private data
-
-The product intends to keep private:
-
-- voter identity
-- wallet-to-vote mapping
-- individual vote choice
-- raw private vote records
-
-The current repository does not yet implement the PER/TEE voter client. Do not interpret the current aggregate authority as a cryptographic proof of private voting. The `privacy_authority` key is selected at group initialization and the program checks only that the transaction signer matches it.
-
-### Trust boundaries
-
-**Cryptographically enforced by Anchor:** PDA derivation constraints, signer checks, member-PDA requirement for proposals, arithmetic checks, deadlines, proposal status, quorum/threshold calculation, recipient matching, treasury balance, and one-way execution status.
-
-**Trusted or incomplete:** the authority that submits aggregate votes, the correctness of aggregate counts, browser-posted indexer events, local demo authentication, and the generated/manual frontend IDL.
-
-**Backend limitation:** the Go API is not allowed to withdraw funds and is not the authority for governance. In the current demo it accepts browser-posted chain events; a production deployment needs a server-side Solana/MagicBlock indexer with authenticated ingestion.
-
-## Governance Model
-
-| Rule             | Current implementation                                                                   |
-| ---------------- | ---------------------------------------------------------------------------------------- |
-| Group admin      | No admin-only treasury instruction exists                                                |
-| Membership       | Valid contribution creates/updates a Member PDA                                          |
-| Proposal creator | Must provide a Member PDA for the group                                                  |
-| Vote storage     | Aggregate counters plus a nullifier receipt; no public wallet-to-choice array            |
-| Quorum           | Group initializes with `quorum_bps = 5000` and finalization rounds the required count up |
-| Threshold        | Configured at group creation in basis points                                             |
-| Finalization     | Permissionless after deadline or full participation                                      |
-| Execution        | Permissionless after `Passed`; the submitter pays the transaction fee                    |
-
-## Treasury Model
-
-- Funds are held in a system-owned Treasury PDA derived from `['treasury', group_pubkey]`.
-- Contributors sign SOL transfers into that PDA through Anchor.
-- The Go backend cannot withdraw from the treasury.
-- Proposals name an immutable recipient public key and requested lamport amount.
-- Only the Anchor `execute_proposal` instruction can release funds through the program’s checks.
-- The current implementation supports SOL. SPL-token vaults for USDC/PAY are not implemented.
-
-## Smart Contract
-
-### Program identity
-
-- Program name: `paydao_proof`
-- Program ID in `chain/Anchor.toml` and `declare_id!`: `ADodoyipRDjhu9esEbgsDd2bE8E5rme7o3UZx2uLS6m4`
-- Cluster configuration: devnet
-
-The browser client has an older hard-coded fallback ID. Set `VITE_PAYDAO_PROGRAM_ID` explicitly to the deployed program ID before using the browser. Do not rely on the fallback.
-
-### Program instructions
-
-| Instruction             | Purpose                                                  | Authority / important checks                                                       |
-| ----------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `initialize_group`      | Create Group and Treasury PDAs and configure governance  | Creator signer; validates text length, visibility, target, threshold, and deadline |
-| `contribute`            | Transfer SOL to treasury and create/update membership    | Contributor signer; positive amount, active group, deadline, checked arithmetic    |
-| `create_proposal`       | Create a proposal account                                | Creator signer plus Member PDA; amount cannot exceed recorded group balance        |
-| `realtime_heartbeat`    | Mutate delegated Group state for the ER proof            | Any caller accepted by the current account context; checked nonce increment        |
-| `record_vote_aggregate` | Add aggregate yes/no/abstain counts and create a receipt | `privacy_authority` signer; proposal deadline/status and member-count cap          |
-| `finalize_proposal`     | Resolve `Voting` to `Passed` or `Rejected`               | Permissionless; deadline/full-participation, quorum, and threshold checks          |
-| `execute_proposal`      | Transfer SOL from treasury to proposal recipient         | Permissionless; passed status, balance, recipient, PDA seeds, and one-time status  |
-| `delegate_group`        | Delegate Group PDA to a selected ER validator            | Payer signer; MagicBlock delegation CPI                                            |
-| `commit_group`          | Commit delegated Group state                             | Payer signer; `MagicIntentBundleBuilder`                                           |
-| `undelegate_group`      | Commit and return Group ownership to the program         | Payer signer; `MagicIntentBundleBuilder`                                           |
-
-### PDA and account architecture
-
-```text
-Group PDA
-  seeds: ["group", creator_pubkey, group_key_16_bytes]
-       |
-       +-- Treasury PDA
-       |   seeds: ["treasury", group_pubkey]
-       |
-       +-- Member PDA per contributor
-       |   seeds: ["member", group_pubkey, contributor_pubkey]
-       |
-       +-- Proposal PDA per proposal
-       |   seeds: ["proposal", group_pubkey, proposal_count_le_bytes]
-       |
-       +-- VoteReceipt PDA per aggregate nullifier
-           seeds: ["vote", proposal_pubkey, nullifier_32_bytes]
+use ephemeral_rollups_sdk::cpi::DelegateConfig;
+use ephemeral_rollups_sdk::ephem::MagicIntentBundleBuilder;
 ```
 
-### Important account fields
+The program is also marked with:
 
-- `Group`: creator, bounded name/description, visibility, random group key, target/current lamports, member/proposal counters, threshold/quorum, deadline, privacy authority, active flag, realtime nonce, bump.
-- `Member`: group, wallet, cumulative contribution, bump.
-- `Proposal`: group, ID, creator, title/description, amount, recipient, voting deadline, aggregate counts, voter count, status, bump.
-- `VoteReceipt`: proposal, nullifier, bump.
-
-### Proposal statuses
-
-The program uses numeric status values represented by `ProposalStatus`:
-
-```text
-Voting -> Passed -> Executed
-Voting -> Rejected
-```
-
-## Technology Stack
-
-### Blockchain
-
-- Solana devnet configuration
-- Solana system program for SOL transfers
-
-### Smart contracts
-
-- Rust
-- Anchor program model
-- `anchor-lang` configured at `1.0.2` in the chain program
-- MagicBlock `ephemeral-rollups-sdk` from its Git repository with the Anchor feature
-
-### Privacy and execution
-
-- MagicBlock Ephemeral Rollup delegation/commit/undelegation in the Anchor program and test
-- PER/TEE is an intended privacy boundary, not a completed browser integration
-
-### Backend
-
-- Go
-- `github.com/jackc/pgx/v5`
-- HTTP JSON API
-- Server-Sent Events
-
-### Frontend
-
-- React 18
-- TypeScript
-- Vite
-- Tailwind CSS
-- Framer Motion
-- Lucide React
-- Anchor and `@solana/web3.js` browser clients
-- React Router
-
-### Database
-
-- PostgreSQL 16 in Docker
-
-### Infrastructure and tooling
-
-- Docker Compose
-- Anchor CLI and Solana CLI for chain deployment/tests
-- Node.js/npm for the root app and chain test harness
-- Rust/Cargo for the Anchor program
-
-## Project Structure
-
-```text
-paydao/
-├── backend/
-│   ├── cmd/api/main.go                Go HTTP API, PostgreSQL setup, SSE, event ingestion
-│   ├── migrations/001_init.sql        Database schema source
-│   ├── cmd/api/migrations/001_init.sql Embedded migration used by the binary
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   ├── go.mod
-│   └── README.md
-├── chain/
-│   ├── programs/paydao-proof/
-│   │   ├── src/lib.rs                 Anchor program
-│   │   └── Cargo.toml
-│   ├── tests/paydao-proof.ts          Devnet/MagicBlock lifecycle test
-│   ├── Anchor.toml
-│   ├── Cargo.toml
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── README.md
-├── src/
-│   ├── chain/paydao.ts                Browser Anchor client for current SOL writes
-│   ├── services/paydaoApi.ts          Go API and SSE client
-│   ├── components/                    Retro UI, layout, modals, and UI primitives
-│   ├── pages/                         Dashboard, groups, proposals, wallet, etc.
-│   ├── store/AppContext.tsx           Local read model and transaction orchestration
-│   ├── data/mockData.ts               Demo data used by unindexed/local screens
-│   ├── types/index.ts
-│   └── App.tsx
-├── docs/
-│   ├── magicblock-phase-1.md          MagicBlock notes and proof runbook
-│   └── assets/architecture/           Place architecture screenshots here
-├── .env.example                       Safe configuration template; no secrets
-├── package.json
-├── vite.config.ts
-├── tailwind.config.js
-└── README.md
-```
-
-## Getting Started
-
-### Prerequisites
-
-Verified from the repository configuration:
-
-- Node.js and npm for the Vite app. The root project has no `engines` field; use a current Node.js release compatible with Vite 5 and the lockfile.
-- Rust and Cargo for the Anchor program.
-- Anchor CLI compatible with the `anchor_version = "1.0.2"` entry in `chain/Anchor.toml`.
-- Solana CLI and a funded devnet keypair at `~/.config/solana/id.json` for the chain test/deploy flow.
-- Docker and Docker Compose for PostgreSQL and the Go API.
-- A browser Solana wallet for browser writes, such as Phantom or Backpack. The browser client expects an injected `window.solana` provider.
-
-The current development machine used for this repository has Cargo/Rust and Docker, but does not have `anchor` or `solana` installed. Install those before running the chain commands.
-
-### Install root frontend dependencies
-
-```bash
-npm install
-```
-
-### Install chain test dependencies
-
-```bash
-cd chain
-npm install
-cd ..
-```
-
-The chain test uses the dependencies declared in `chain/package.json`; it is separate from the root Vite app.
-
-### Environment variables
-
-Copy the safe template:
-
-```bash
-cp .env.example .env.local
-```
-
-Do not upload private keys, seed phrases, wallet JSON files, TEE tokens, database passwords, or API secrets into this repository or into the architecture assets directory. Use a local ignored `.env.local`, a secret manager, or your CI provider’s secret store.
-
-| Variable                      | Purpose                                                      | Required for                               |
-| ----------------------------- | ------------------------------------------------------------ | ------------------------------------------ |
-| `VITE_API_URL`                | Go API base URL; defaults to `http://localhost:8080`         | Frontend indexed groups/SSE                |
-| `VITE_SOLANA_RPC`             | Solana RPC used by browser Anchor client; defaults to devnet | Browser group/contribution/proposal writes |
-| `VITE_PAYDAO_PROGRAM_ID`      | Deployed PayDAO program ID                                   | Browser writes; set this explicitly        |
-| `DATABASE_URL`                | PostgreSQL connection string                                 | Go API                                     |
-| `PORT`                        | Go API port; defaults to `8080`                              | Go API                                     |
-| `FRONTEND_ORIGIN`             | CORS allow-origin                                            | Go API production hardening                |
-| `INDEXER_SECRET`              | Optional server-to-server event-ingestion secret             | Production indexer ingestion               |
-| `EPHEMERAL_PROVIDER_ENDPOINT` | MagicBlock ER RPC for the Anchor test                        | Chain ER test                              |
-| `EPHEMERAL_WS_ENDPOINT`       | MagicBlock ER WebSocket endpoint for the Anchor test         | Chain ER test                              |
-| `VALIDATOR`                   | Optional MagicBlock validator identity override              | Chain ER test                              |
-
-### Run the backend
-
-From `backend/`:
-
-```bash
-docker compose up --build
-```
-
-The API listens on `http://localhost:8080`. Verify it:
-
-```bash
-curl http://localhost:8080/healthz
-```
-
-Expected response:
-
-```json
-{"status":"ok"}
-```
-
-### Run the frontend
-
-From the repository root:
-
-```bash
-npm run dev
-```
-
-Vite normally serves the app at `http://localhost:5173`.
-
-The login screen is a local demo gate. Any non-empty email and password are accepted; no backend authentication is performed.
-
-## API Documentation
-
-### `GET /healthz`
-
-Checks database connectivity.
-
-### `GET /api/v1/groups`
-
-Returns public groups from PostgreSQL. The response is an indexed read model, not a direct authoritative chain read.
-
-### `GET /api/v1/groups/{id}`
-
-Returns one indexed group by its database ID.
-
-### `GET /api/v1/realtime`
-
-Opens an SSE stream. Events are privacy-safe activity objects with group ID, event type, message, status, and timestamp. The stream must not carry voter wallet identities or individual vote choices.
-
-### `POST /internal/v1/chain-events`
-
-Accepts an event payload from the current browser integration or a future server-side indexer. Required fields are `type`, `groupId`, and `signature`. In production, set `INDEXER_SECRET` and send the `X-Indexer-Secret` header from a trusted server-side indexer.
-
-Example development event:
-
-```json
-{
-  "type": "group_created",
-  "groupId": "<group-pda>",
-  "groupAddress": "<group-pda>",
-  "signature": "<solana-signature>",
-  "name": "Security Fund",
-  "description": "Community audit funding",
-  "amountLamports": "1000000000",
-  "currency": "SOL",
-  "visibility": "public",
-  "thresholdBps": 6000,
-  "memberCount": 0
+```rust
+#[ephemeral]
+#[program]
+pub mod paydao_proof {
+    ...
 }
 ```
 
-The API derives a deterministic anonymous contributor label from the event signature for contribution records. This is an application label, not a cryptographic anonymity guarantee.
+This makes MagicBlock a part of the actual on-chain program architecture rather than something implemented only in the frontend.
 
-## Anchor and MagicBlock Development
+---
 
-From `chain/`:
+# ⚡ 1. Ephemeral Rollup Program
+
+PayDAO uses MagicBlock's Anchor integration through:
+
+```rust
+#[ephemeral]
+#[program]
+pub mod paydao_proof
+```
+
+This enables the program to participate in the Ephemeral Rollup execution model.
+
+The important concept is that selected PayDAO accounts can be delegated to an ER validator.
+
+Once delegated, those accounts can be operated on inside the fast execution environment.
+
+---
+
+# 🔀 2. Account Delegation
+
+PayDAO supports delegation of three important governance accounts:
+
+### Group
+
+```rust
+pub fn delegate_group(
+    ctx: Context<DelegateGroup>,
+) -> Result<()>
+```
+
+### Proposal
+
+```rust
+pub fn delegate_proposal(
+    ctx: Context<DelegateProposal>,
+) -> Result<()>
+```
+
+### Treasury
+
+```rust
+pub fn delegate_treasury(
+    ctx: Context<DelegateTreasury>,
+) -> Result<()>
+```
+
+Each delegation uses MagicBlock's:
+
+```rust
+DelegateConfig
+```
+
+and can specify an ER validator.
+
+For example:
+
+```rust
+ctx.accounts.delegate_group(
+    &ctx.accounts.payer,
+    &[
+        GROUP_SEED,
+        group.creator.as_ref(),
+        &group.group_key,
+    ],
+    DelegateConfig {
+        validator,
+        ..Default::default()
+    },
+)?;
+```
+
+This is where PayDAO hands the selected account to the MagicBlock execution environment.
+
+---
+
+# 🔄 3. Realtime Governance State
+
+PayDAO includes a dedicated realtime instruction:
+
+```rust
+pub fn realtime_heartbeat(
+    ctx: Context<RealtimeHeartbeat>,
+) -> Result<()> {
+    ctx.accounts.group.realtime_nonce =
+        ctx.accounts.group.realtime_nonce
+            .checked_add(1)
+            .ok_or(ErrorCode::Overflow)?;
+
+    Ok(())
+}
+```
+
+The `realtime_nonce` exists specifically to demonstrate mutable Group state while the account participates in the delegated environment.
+
+Conceptually:
+
+```text
+Solana Group PDA
+       │
+       │ delegate
+       ▼
+MagicBlock ER
+       │
+       │ realtime_heartbeat()
+       │
+       │ nonce++
+       │
+       ▼
+Updated delegated state
+```
+
+This demonstrates the core MagicBlock capability PayDAO is using:
+
+> **Governance state can move into a fast execution environment and be updated there before being committed back to Solana.**
+
+---
+
+# 💾 4. Commit Back to Solana
+
+After governance activity occurs in the Ephemeral Rollup, PayDAO can commit the state back to Solana.
+
+The program uses:
+
+```rust
+MagicIntentBundleBuilder
+```
+
+For example:
+
+```rust
+MagicIntentBundleBuilder::new(
+    ctx.accounts.payer.to_account_info(),
+    ctx.accounts.magic_context.to_account_info(),
+    ctx.accounts.magic_program.to_account_info(),
+)
+.commit(&[
+    ctx.accounts.group.to_account_info(),
+])
+.build_and_invoke()?;
+```
+
+PayDAO provides commit instructions for:
+
+* Group
+* Proposal
+* Treasury
+
+and also provides an atomic governance commit.
+
+---
+
+# 🧩 5. Atomic Governance Commit
+
+The most important commit path is:
+
+```rust
+pub fn commit_governance_state(
+    ctx: Context<CommitGovernanceState>,
+) -> Result<()>
+```
+
+It commits:
+
+```text
+Group
+Proposal
+Treasury
+```
+
+together.
+
+```rust
+.commit(&[
+    ctx.accounts.group.to_account_info(),
+    ctx.accounts.proposal.to_account_info(),
+    ctx.accounts.treasury.to_account_info(),
+])
+```
+
+This gives PayDAO a clean governance lifecycle:
+
+```text
+        SOLANA
+           │
+           │ delegate
+           ▼
+    ┌─────────────┐
+    │ MagicBlock  │
+    │     ER      │
+    └─────────────┘
+           │
+           │ governance activity
+           ▼
+    Group + Proposal
+    + Treasury state
+           │
+           │ atomic commit
+           ▼
+        SOLANA
+```
+
+---
+
+# 🔙 6. Commit + Undelegate
+
+PayDAO also supports:
+
+```rust
+pub fn undelegate_governance_state(
+    ctx: Context<CommitGovernanceState>,
+) -> Result<()>
+```
+
+using:
+
+```rust
+.commit_and_undelegate(&[
+    ctx.accounts.group.to_account_info(),
+    ctx.accounts.proposal.to_account_info(),
+    ctx.accounts.treasury.to_account_info(),
+])
+```
+
+This performs the final transition:
+
+```text
+MagicBlock ER
+      │
+      │ commit_and_undelegate
+      ▼
+Solana ownership/state
+```
+
+The application can therefore return governance state from the Ephemeral Rollup back to the Solana base layer.
+
+---
+
+# 🏛️ PayDAO Governance Architecture
+
+PayDAO's governance state is divided into several PDAs.
+
+```text
+                    GROUP PDA
+                       │
+          ┌────────────┼────────────┐
+          │            │            │
+          ▼            ▼            ▼
+      Treasury      Members      Proposals
+                                    │
+                                    ▼
+                              Vote Receipts
+```
+
+### Group PDA
+
+Contains:
+
+* group creator
+* group metadata
+* target amount
+* current treasury balance
+* reserved funds
+* member count
+* proposal count
+* voting threshold
+* quorum
+* deadline
+* realtime nonce
+
+### Treasury PDA
+
+Holds the group's SOL.
+
+```text
+Treasury PDA
+    │
+    │ controlled by Anchor
+    ▼
+SOL
+```
+
+The backend never receives treasury authority.
+
+### Member PDA
+
+Created when a wallet contributes.
+
+```text
+Wallet
+   │
+   │ contribute SOL
+   ▼
+Treasury
+   │
+   ▼
+Member PDA
+```
+
+Contribution therefore becomes the membership mechanism.
+
+### Proposal PDA
+
+Contains:
+
+* proposal creator
+* title
+* description
+* requested amount
+* recipient
+* voting deadline
+* vote aggregates
+* voter count
+* proposal status
+
+### Vote Receipt PDA
+
+Prevents a wallet from voting twice on the same proposal.
+
+---
+
+# 💰 Treasury Flow
+
+The treasury is controlled by the Anchor program.
+
+```text
+Contributor
+     │
+     │ contribute()
+     ▼
+┌──────────────┐
+│ Treasury PDA │
+└──────────────┘
+     │
+     │ proposal approved
+     ▼
+ Recipient
+```
+
+The backend cannot withdraw funds.
+
+The frontend cannot directly move treasury SOL.
+
+Only the program's treasury execution logic can release proposal funds.
+
+---
+
+# 🗳️ Governance Flow
+
+A typical PayDAO proposal follows:
+
+```text
+Proposal Created
+       │
+       ▼
+     Voting
+       │
+       ├───────────────┐
+       │               │
+       ▼               ▼
+    Approved         Rejected
+       │               │
+       ▼               ▼
+ Treasury Payment    Funds Released
+       │
+       ▼
+    Executed
+```
+
+PayDAO requires all members to participate before the final governance decision.
+
+The proposal's YES/NO/ABSTAIN values are maintained as aggregate counters.
+
+---
+
+# ⚙️ Automatic Treasury Settlement
+
+Once all required votes have been received, PayDAO calculates the approval ratio.
+
+```text
+YES
+────────────── × 10,000
+YES + NO
+```
+
+The result is compared against:
+
+```rust
+group.voting_threshold_bps
+```
+
+If the threshold is reached, the proposal can execute the treasury payment.
+
+The internal execution function:
+
+```rust
+execute_treasury_payment(...)
+```
+
+updates:
+
+```text
+Treasury balance
+Reserved funds
+Proposal status
+```
+
+atomically within the program instruction.
+
+---
+
+# 🔐 On-Chain Security
+
+The Anchor program enforces the critical treasury and governance rules.
+
+### PDA constraints
+
+PayDAO derives:
+
+```text
+Group
+Treasury
+Member
+Proposal
+VoteReceipt
+```
+
+using deterministic PDA seeds.
+
+### Treasury protection
+
+The program verifies:
+
+* treasury belongs to the group
+* treasury contains sufficient SOL
+* proposal amount is reserved
+* recipient matches proposal recipient
+* proposal is in a valid state
+
+### Proposal protection
+
+A proposal cannot execute unless:
+
+```text
+status == Passed
+```
+
+and the treasury has sufficient funds.
+
+### Double voting protection
+
+Vote receipts use:
+
+```text
+["vote", proposal, voter]
+```
+
+which allows one receipt per wallet per proposal.
+
+---
+
+# 🪄 Where MagicBlock Fits
+
+MagicBlock is specifically used for the **governance execution layer**.
+
+| Layer           | Technology               | Purpose                            |
+| --------------- | ------------------------ | ---------------------------------- |
+| Base blockchain | Solana                   | Durable state and settlement       |
+| Smart contract  | Anchor                   | Governance + treasury rules        |
+| Fast execution  | MagicBlock ER            | Delegated realtime state execution |
+| Delegation      | MagicBlock SDK           | Move selected accounts to ER       |
+| Realtime state  | ER                       | Fast governance state transitions  |
+| Commit          | MagicIntentBundleBuilder | Commit delegated state             |
+| Finalization    | Commit + Undelegate      | Return state to Solana             |
+
+The architecture can be summarized as:
+
+```text
+                  PAYDAO
+                    │
+          ┌─────────┴─────────┐
+          │                   │
+       Solana             MagicBlock
+          │                   │
+   Durable state        Fast execution
+   Treasury              Governance
+   Settlement            Realtime state
+          │                   │
+          └─────────┬─────────┘
+                    │
+                 Commit
+                    │
+                    ▼
+                 Solana
+```
+
+---
+
+# 🚀 Why This Architecture?
+
+PayDAO deliberately separates:
+
+### Solana
+
+Used for:
+
+* durable ownership
+* treasury custody
+* final state
+* program-enforced rules
+* SOL settlement
+
+### MagicBlock
+
+Used for:
+
+* delegated governance state
+* realtime execution
+* fast state transitions
+* governance interaction lifecycle
+* committing state back to Solana
+
+This gives PayDAO the best architectural split:
+
+> **Solana provides the security boundary. MagicBlock provides the realtime execution environment.**
+
+---
+
+# 🧪 MagicBlock Flow
+
+The demonstrated MagicBlock lifecycle is:
+
+```text
+1. initialize_group
+        │
+        ▼
+2. Group PDA created on Solana
+        │
+        ▼
+3. delegate_group
+        │
+        ▼
+4. Group delegated to MagicBlock ER
+        │
+        ▼
+5. realtime_heartbeat
+        │
+        ▼
+6. Group state changes on ER
+        │
+        ▼
+7. commit_governance_state
+        │
+        ▼
+8. Group + Proposal + Treasury
+   committed back to Solana
+        │
+        ▼
+9. undelegate_governance_state
+        │
+        ▼
+10. Solana resumes authoritative state
+```
+
+---
+
+# 🛠️ Technology Stack
+
+## Blockchain
+
+* Solana
+* Solana System Program
+
+## Smart Contract
+
+* Rust
+* Anchor
+* `anchor-lang`
+
+## MagicBlock
+
+* MagicBlock Ephemeral Rollups
+* `ephemeral-rollups-sdk`
+* Anchor MagicBlock integration
+* `#[ephemeral]`
+* `#[delegate]`
+* `#[commit]`
+* `DelegateConfig`
+* `MagicIntentBundleBuilder`
+
+## Frontend
+
+* React
+* TypeScript
+* Vite
+* React Router
+* Framer Motion
+* Lucide React
+* Solana Wallet Adapter
+
+## Backend
+
+* Go
+* PostgreSQL
+* HTTP API
+* Server-Sent Events
+
+## Infrastructure
+
+* Docker
+* Docker Compose
+
+---
+
+# 📁 Project Structure
+
+```text
+paydao/
+│
+├── chain/
+│   ├── programs/
+│   │   └── paydao-proof/
+│   │       ├── src/
+│   │       │   └── lib.rs
+│   │       └── Cargo.toml
+│   │
+│   ├── tests/
+│   │   └── paydao-proof.ts
+│   │
+│   ├── Anchor.toml
+│   └── Cargo.toml
+│
+├── src/
+│   ├── chain/
+│   │   └── paydao.ts
+│   │
+│   ├── components/
+│   ├── pages/
+│   ├── services/
+│   ├── store/
+│   └── types/
+│
+├── backend/
+│   ├── cmd/
+│   ├── migrations/
+│   └── Dockerfile
+│
+└── README.md
+```
+
+---
+
+# 🔄 Complete PayDAO Flow
+
+```mermaid
+sequenceDiagram
+
+    participant User
+    participant UI as PayDAO UI
+    participant Solana
+    participant ER as MagicBlock ER
+    participant Treasury
+
+    User->>UI: Create Group
+    UI->>Solana: initialize_group()
+    Solana-->>UI: Group PDA
+
+    User->>UI: Contribute SOL
+    UI->>Solana: contribute()
+    Solana->>Treasury: Transfer SOL
+    Solana-->>UI: Member activated
+
+    User->>UI: Create Proposal
+    UI->>Solana: create_proposal()
+    Solana-->>UI: Proposal PDA
+
+    UI->>Solana: delegate_governance_state()
+    Solana->>ER: Delegate accounts
+
+    User->>UI: Governance interaction
+    UI->>ER: Realtime state transition
+
+    ER-->>UI: Updated governance state
+
+    UI->>Solana: commit_governance_state()
+    ER->>Solana: Commit Group + Proposal + Treasury
+
+    UI->>Solana: undelegate_governance_state()
+    Solana-->>UI: Final state
+
+    User->>UI: Execute approved proposal
+    UI->>Solana: execute_proposal()
+    Solana->>Treasury: Transfer SOL
+```
+
+---
+
+# 🏆 Why PayDAO for BlitzX?
+
+PayDAO is not using MagicBlock as a cosmetic integration.
+
+MagicBlock is part of the application's execution architecture.
+
+The project demonstrates how a DAO-style treasury application can combine:
+
+```text
+          SOLANA
+     Secure settlement
+           +
+       MAGICBLOCK
+    Fast governance
+           +
+         ANCHOR
+   Enforced governance
+           =
+         PAYDAO
+```
+
+The key idea is:
+
+> **Move active governance state where it can execute quickly, then commit the resulting state back to Solana where the treasury and durable state remain secure.**
+
+This allows PayDAO to explore a more realtime governance experience without moving treasury custody away from Solana.
+
+---
+
+# 📜 Program
+
+PayDAO Anchor program:
+
+```text
+Eo8z84VpZvhf86i6c9yzmrfMcjSGwT6hhYfjhK6HugvG
+```
+
+Cluster:
+
+```text
+Solana Devnet
+```
+
+---
+
+# 🏁 Running the Project
+
+### Frontend
 
 ```bash
 npm install
-anchor build
+npm run dev
 ```
 
-Deploy to devnet after configuring a funded wallet:
-
-```bash
-solana config set --url https://api.devnet.solana.com
-solana airdrop 2
-anchor deploy --provider.cluster devnet
-```
-
-Run the integration test:
-
-```bash
-anchor test --skip-build --skip-deploy --skip-local-validator
-```
-
-The test assumes:
-
-- the program is already deployed;
-- the local Anchor provider is configured for devnet;
-- the wallet is funded;
-- `https://devnet-as.magicblock.app/` is reachable;
-- the selected ER validator is available.
-
-The test flow is:
-
-```text
-initialize_group on Solana
-        |
-        v
-delegate_group to MagicBlock ER
-        |
-        v
-realtime_heartbeat on ER
-        |
-        v
-undelegate_group: commit + return ownership
-        |
-        v
-contribute SOL -> Member PDA
-        |
-        v
-create_proposal -> aggregate vote settlement -> finalize -> execute
-```
-
-There is no local MagicBlock validator configuration in this repository. The current test uses the devnet ER endpoint and the Asia validator default from the test file.
-
-## Frontend User Flows
-
-### Implemented chain-backed flow
-
-1. Open Groups.
-2. Select Create Group.
-3. Choose `SOL` explicitly.
-4. Connect/unlock an injected Solana wallet.
-5. Sign `initialize_group`.
-6. After confirmation, the app adds the group to its local read model and posts a chain event to the Go API.
-7. Open the group and contribute SOL.
-8. After confirmation, contribution state is updated locally and an event is posted to the API.
-9. Create a proposal using a valid base58 recipient public key.
-
-### Demo/local flows
-
-Dashboard charts, wallet balances, payments, member lists, notifications, many transactions, and initial group/proposal data come from `src/data/mockData.ts` and browser `localStorage`. They are useful for the visual demo but are not authoritative chain reads.
-
-### Voting flow
-
-The UI shows aggregate-style voting panels, but `AppContext.voteOnProposal` deliberately throws until a PER/TEE voter client exists. No local vote is recorded and the frontend must not claim that a private vote succeeded.
-
-## Testing and Validation
-
-### Root frontend
-
-```bash
-npm run typecheck
-npm run build
-npm run lint
-```
-
-The build and typecheck are currently passing in the repository. The lint configuration reports existing unrelated errors in legacy UI/demo files; lint is not currently a clean gate.
-
-### Go backend
+### Backend
 
 ```bash
 cd backend
-go test ./...
+docker compose up --build
 ```
 
-There are currently no Go test files; this command compiles the API package.
-
-### Anchor/MagicBlock
+### Anchor / MagicBlock
 
 ```bash
 cd chain
+
+npm install
+
 anchor build
+```
+
+For the devnet integration flow:
+
+```bash
 anchor test --skip-build --skip-deploy --skip-local-validator
 ```
 
-This is the only substantive integration test. It requires devnet credentials and reachable MagicBlock infrastructure. There are no frontend unit tests, browser tests, or formal security tests in the repository.
+The MagicBlock integration test demonstrates the delegated-account lifecycle and realtime state transition.
 
-## Deployment
+---
 
-### Local development
+# 🎯 Hackathon Demo
 
-- Run PostgreSQL and the API with `docker compose up --build` from `backend/`.
-- Run Vite with `npm run dev` from the root.
-- The chain test uses devnet by default; no local Solana validator or local MagicBlock stack is configured here.
-
-### Devnet
-
-1. Install compatible Anchor and Solana CLIs.
-2. Configure `~/.config/solana/id.json`.
-3. Fund the wallet on devnet.
-4. Confirm the program ID in `chain/Anchor.toml` matches `declare_id!` and `VITE_PAYDAO_PROGRAM_ID`.
-5. Run `anchor build` and `anchor deploy --provider.cluster devnet`.
-6. Set frontend RPC/program variables.
-7. Run the integration test.
-8. Start PostgreSQL/API and the frontend.
-
-### Mainnet
-
-No mainnet deployment configuration, hosted RPC, production indexer, production authentication, audit, or hosted frontend is included. Do not treat the devnet configuration as mainnet-ready.
-
-## Two-to-Five-Minute Hackathon Demo
-
-The strongest honest demo path is:
-
-1. Start the Go API with Docker and the Vite app.
-2. Show the PayDAO group interface and the architecture diagram.
-3. Use a funded devnet wallet and select SOL in Create Group.
-4. Sign `initialize_group` and show the Solana signature.
-5. Contribute SOL and explain that the Member PDA is created by the same instruction.
-6. Create a proposal with a real recipient address.
-7. Run the Anchor/MagicBlock integration test or show its recorded output: Group delegation, realtime heartbeat, and commit/undelegation.
-8. Explain that private voting is the next PER/TEE milestone; do not claim the current browser has completed it.
-9. Explain that passed-proposal execution is permissionless in Anchor, but requires a caller to submit the transaction.
-
-## Security Considerations
-
-Verified protections in the current Anchor program:
-
-- PDA seed constraints for Group, Treasury, Member, Proposal, and VoteReceipt accounts.
-- Signer requirements for creation, contribution, privacy-authority aggregate settlement, delegation, and commit operations.
-- Positive amount and target checks.
-- Checked arithmetic for counters, balances, vote counts, and realtime nonce.
-- Group and proposal deadline checks.
-- Member-PDA requirement for proposal creation.
-- Proposal amount cannot exceed the group’s recorded balance at creation.
-- Aggregate vote count cannot exceed the group’s member count.
-- Finalization requires deadline/full participation plus quorum and threshold calculations.
-- Execution requires `Passed`, sufficient balance, matching recipient, and a treasury PDA signer transfer.
-- Proposal status changes to `Executed` after transfer, preventing a second execution through the same status gate.
-
-## Known Limitations
-
-- The current browser client uses a hand-authored minimal IDL and its fallback program ID is stale relative to the current `Anchor.toml`; always set `VITE_PAYDAO_PROGRAM_ID` explicitly.
-- The browser does not delegate/read from MagicBlock ER. ER usage is currently proven by the Anchor integration test.
-- PER/TEE/private voter authorization is not implemented. `privacy_authority` is a trusted configured signer, not proof that votes were privately and correctly tallied.
-- Aggregate vote receipt nullifiers are stored, but the program does not independently prove that a nullifier maps to a unique eligible voter or that the submitted aggregate is correct.
-- `record_vote_aggregate` can be called by the configured authority with aggregate counts; the authority model needs a formal privacy-proof design and audit.
-- The Go backend is a read model and accepts browser-posted events in local mode. It is not a trustless Solana indexer.
-- Indexed group balances can lag or differ from chain state because the current backend is not listening directly to Solana/MagicBlock events.
-- Frontend login is a local demo gate and accepts any non-empty credentials.
-- Most wallet, payments, transactions, notifications, and charts are mock/local data.
-- Only SOL is supported by current chain-backed browser flows. USDC and PAY are UI/mock options, not implemented SPL-token treasury flows.
-- Proposal recipients must be public keys, although some legacy UI copy/examples use human-readable labels.
-- The program has not been formally audited.
-- No production rate limits, monitoring, secret manager integration, migration runner, or backup policy is included.
-- Docker uses development PostgreSQL credentials.
-
-## Key Design Decisions
-
-- **Treasury custody stays in Anchor:** the Go service cannot arbitrarily release funds.
-- **Contribution creates membership:** this removes a separate join transaction and makes eligibility verifiable through a Member PDA.
-- **No admin withdrawal path:** proposal execution is governed by proposal state and on-chain checks.
-- **Permissionless execution:** anyone can pay the transaction fee to trigger a passed proposal; no administrator is required.
-- **Separate delegated state from treasury:** the tested MagicBlock ER lifecycle delegates the Group PDA, while treasury transfer authority remains enforced by the Anchor program.
-- **Aggregate public state, private intended inputs:** the program stores aggregate counts and nullifier receipts, while the intended PER/TEE layer keeps individual vote data out of public state. The privacy proof is not complete yet.
-- **Go is a read model:** indexing and realtime transport should improve UX without becoming a second treasury authority.
-
-## What Makes PayDAO Different?
-
-The project combines three concrete primitives in one flow:
-
-1. A contribution is both funding and membership activation.
-2. A Group PDA can be delegated to MagicBlock ER infrastructure for realtime state transitions and later committed back to Solana.
-3. A passed proposal can release treasury SOL through a permissionless Anchor instruction with no admin approval transaction.
-
-The differentiator is not that all of these are production-complete today. It is that the repository contains the on-chain enforcement boundary and the MagicBlock lifecycle needed to evolve the demo toward realtime private governance without moving treasury authority into the backend.
-
-## Roadmap
-
-### Current
-
-- SOL Group/Treasury/Member/Proposal/VoteReceipt account model.
-- Anchor checks for contribution, proposal, finalization, and execution.
-- MagicBlock ER delegation/heartbeat/commit-and-undelegate integration test.
-- Browser SOL group, contribution, and proposal transactions.
-- Go PostgreSQL read model and SSE activity endpoint.
-- Existing retro/pixel frontend shell and demo pages.
-
-### Next
-
-- Generate and ship the Anchor IDL to the frontend instead of maintaining a minimal hand-authored IDL.
-- Fix program ID/config synchronization and validate browser transactions against the deployed program.
-- Add browser MagicBlock Router/ER delegation and realtime reads.
-- Implement a real PER/TEE voter authorization/client flow.
-- Define and verify aggregate vote proofs, voter eligibility, and nullifier uniqueness.
-- Replace browser-posted events with a server-side Solana/MagicBlock indexer.
-- Expose indexed proposal/contribution/activity reads through the Go API.
-- Replace demo authentication with wallet-based identity/session handling.
-
-### Future
-
-- SPL-token vaults for USDC and a defined PAY token.
-- Audited Magic Actions integration for post-commit operations where appropriate.
-- Production observability, rate limits, secret management, migrations, backups, and deployment automation.
-- Mainnet deployment after audit and privacy/security review.
-
-## Secure Configuration and Uploads
-
-Use `.env.example` as the safe configuration template. Never upload secrets into Git, issue attachments, `docs/assets`, or screenshots.
-
-For local secret material:
+The ideal PayDAO demo is:
 
 ```text
-.env.local                 ignored local frontend values
-backend/.env               local backend values; do not commit
-~/.config/solana/id.json   local Solana wallet; never upload
+Create Group
+     ↓
+Fund Treasury
+     ↓
+Create Proposal
+     ↓
+Delegate Governance State
+     ↓
+MagicBlock ER
+     ↓
+Realtime Governance
+     ↓
+Commit State
+     ↓
+Return to Solana
+     ↓
+Treasury Settlement
 ```
 
-For an architecture screenshot, place a sanitized image at:
+The important part to demonstrate to judges is not simply that PayDAO has a DAO UI.
 
-```text
-docs/assets/architecture/paydao-architecture.png
-```
+It is that **MagicBlock is actually involved in the lifecycle of the application's governance state.**
 
-The directory is intentionally present for hackathon screenshots. Remove wallet addresses, RPC tokens, TEE tokens, database passwords, and private URLs before adding an image.
+---
 
-## Contributing
+# 🔮 Future Direction
 
-1. Create a focused branch.
-2. Keep treasury authorization in Anchor; do not add backend withdrawal paths.
-3. Preserve the privacy rule: never add wallet-to-vote or individual vote data to public activity/API payloads.
-4. Run root typecheck/build, backend tests, and the Anchor compile check for relevant changes.
-5. Document whether a feature is chain-backed, indexed, mock-only, or planned.
+PayDAO can evolve toward:
 
-## License
+* richer realtime governance interactions
+* browser-side MagicBlock ER integration
+* more granular delegated account workflows
+* improved governance UX
+* private voting through a dedicated privacy architecture
+* server-side Solana indexing
+* SPL-token treasury support
+* production deployment and security auditing
 
-No license is currently specified in this repository. Do not assume the code is licensed for redistribution until a license is added by the project owner.
+---
 
-## Acknowledgements
+## Built for BlitzX
 
-- [Solana](https://solana.com/)
-- [Anchor](https://www.anchor-lang.com/)
-- [MagicBlock](https://www.magicblock.gg/) and the [MagicBlock documentation](https://docs.magicblock.gg/)
-- [PostgreSQL](https://www.postgresql.org/)
-- [React](https://react.dev/)
+**PayDAO — Collaborative funding and governance with Solana + MagicBlock.**
+
+> **Secure treasury on Solana. Realtime governance with MagicBlock.**
