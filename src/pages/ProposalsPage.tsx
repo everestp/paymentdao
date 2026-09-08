@@ -420,25 +420,82 @@ export function ProposalsPage() {
   const normalizedProposals = useMemo(() => {
     return proposals.map((raw) => {
       const proposal =
-        raw as OnChainProposal &
-        Record<string, unknown>;
+        raw as OnChainProposal & Record<string, unknown>;
 
       const address =
-        proposal.address ||
-        getAddress(proposal.publicKey);
+        getAddress(proposal.address) ||
+        getAddress(proposal.publicKey) ||
+        toStringValue(proposal.id);
+
+      const groupId = getProposalGroupId(proposal);
+
+      /*
+       * Find the actual group belonging to this proposal.
+       */
+      const matchedGroup = groups.find((group) => {
+        const g = group as OnChainGroup & Record<string, unknown>;
+
+        const groupAddress =
+          getAddress(g.address) ||
+          getAddress(g.publicKey) ||
+          toStringValue(g.id);
+
+        return groupAddress === groupId;
+      });
+
+      const group = matchedGroup as
+        | (OnChainGroup & Record<string, unknown>)
+        | undefined;
+
+      /*
+       * Proposal title.
+       *
+       * Support multiple possible field names because
+       * Anchor account mappings can differ.
+       */
+      const title =
+        toStringValue(
+          proposal.title ??
+          proposal.name ??
+          proposal.proposalTitle ??
+          proposal.proposal_name ??
+          proposal.metadata?.title ??
+          "",
+        ).trim();
+
+      /*
+       * Group name.
+       */
+      const groupName =
+        group
+          ? toStringValue(
+            group.name ??
+            group.groupName ??
+            group.title ??
+            group.group_name ??
+            group.metadata?.name ??
+            "",
+          ).trim()
+          : "";
 
       return {
         raw: proposal,
 
         address,
 
-        id: proposal.id ?? address,
+        id: address,
 
-        groupId: getProposalGroupId(proposal),
+        groupId,
 
-        groupName: "Unknown Group",
+        groupName:
+          groupName ||
+          (groupId
+            ? `Group ${groupId.slice(0, 6)}…${groupId.slice(-4)}`
+            : "No group"),
 
-        title: getProposalTitle(proposal),
+        title:
+          title ||
+          `Proposal ${address.slice(0, 6)}…${address.slice(-4)}`,
 
         description:
           getProposalDescription(proposal),
@@ -446,27 +503,38 @@ export function ProposalsPage() {
         amount:
           getProposalAmount(proposal),
 
-        currency: "SOL",
+        currency:
+          toStringValue(
+            proposal.currency ?? "SOL",
+          ).toUpperCase(),
 
-        status: normalizeStatus(
-          proposal.status,
-        ),
+        status:
+          normalizeStatus(proposal.status),
 
-        votes: getVotes(proposal),
+        votes:
+          getVotes(proposal),
 
-        memberCount: 0,
+        memberCount:
+          toNumber(
+            group?.memberCount ??
+            group?.membersCount ??
+            group?.member_count ??
+            0,
+          ),
 
-        deadline: getDeadline(proposal),
-
-        createdAt: getCreatedAt(proposal),
-
-        hoursLeft: getHoursLeft(
+        deadline:
           getDeadline(proposal),
-        ),
 
-        executed: Boolean(
-          proposal.executed,
-        ),
+        createdAt:
+          getCreatedAt(proposal),
+
+        hoursLeft:
+          getHoursLeft(
+            getDeadline(proposal),
+          ),
+
+        executed:
+          Boolean(proposal.executed),
       };
     });
   }, [proposals, groups]);
@@ -921,256 +989,260 @@ function ProposalCard({
     hoursLeft: number;
     executed: boolean;
   };
-
   onClick: () => void;
 }) {
-  /* ==========================================================
-   * VOTES
-   * ======================================================== */
-
   const totalVotes =
     p.votes.yes +
     p.votes.no +
     p.votes.abstain;
 
-  const memberCount = Math.max(
-    p.memberCount,
-    0,
-  );
-
   /*
-   * If member count is not available,
-   * display the vote distribution based
-   * on actual votes instead of dividing by 0.
-   */
 
+  * Use members when available.
+  * Otherwise use actual votes so the bar still works
+  * for groups where memberCount isn't available.
+    */
   const denominator =
-    memberCount > 0
-      ? memberCount
+    p.memberCount > 0
+      ? p.memberCount
       : Math.max(totalVotes, 1);
 
   const yesPct = Math.min(
     100,
-    (p.votes.yes /
-      denominator) *
-    100,
+    (p.votes.yes / denominator) * 100,
   );
 
   const noPct = Math.min(
     100,
-    (p.votes.no /
-      denominator) *
-    100,
+    (p.votes.no / denominator) * 100,
   );
 
-  const abstainPct =
-    Math.min(
-      100,
-      (p.votes.abstain /
-        denominator) *
-      100,
-    );
-
-  /* ==========================================================
-   * STATUS
-   * ======================================================== */
+  const abstainPct = Math.min(
+    100,
+    (p.votes.abstain / denominator) * 100,
+  );
 
   const statusVariant =
     p.status === "voting"
       ? "pending"
       : p.status === "passed"
         ? "success"
-        : p.status === "rejected"
-          ? "rejected"
-          : p.status === "executed"
-            ? "approved"
-            : p.status ===
-              "expired"
+        : p.status === "executed"
+          ? "approved"
+          : p.status === "rejected"
+            ? "rejected"
+            : p.status === "expired"
               ? "warning"
               : "default";
 
-  /* ==========================================================
-   * CARD
-   * ======================================================== */
+  const statusLabel =
+    p.status === "voting"
+      ? "Voting"
+      : p.status === "passed"
+        ? "Passed"
+        : p.status === "executed"
+          ? "Executed"
+          : p.status === "rejected"
+            ? "Rejected"
+            : p.status === "expired"
+              ? "Expired"
+              : p.status;
 
-  return (
-    <PixelCard
-      hover
-      onClick={onClick}
-      className="flex flex-col cursor-pointer"
-    >
-      {/* HEADER */}
+  return (<PixelCard
+    hover
+    onClick={onClick}
+    className="group cursor-pointer p-4 flex flex-col min-h-[250px]"
+  >
+    {/* =====================================================
+* TOP
+* =================================================== */}
 
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1 min-w-0">
-          <div className="text-xs text-cyan font-medium mb-1">
-            PROPOSAL{" "}
-            {p.id.slice(0, 8)}
-          </div>
+    ```
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        {/* GROUP */}
 
-          <div className="text-sm text-txprim font-medium truncate">
-            {p.title}
-          </div>
-
-          <div className="text-xs text-txdim mt-0.5 truncate">
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="text-[10px] uppercase tracking-wider text-cyan font-medium truncate">
             {p.groupName}
-          </div>
+          </span>
+
+          <span className="text-[10px] text-txdim">
+            •
+          </span>
+
+          <span className="text-[10px] text-txdim font-mono shrink-0">
+            {p.id.slice(0, 6)}
+          </span>
         </div>
 
-        <StatusBadge
-          variant={
-            statusVariant
-          }
-          className="ml-2 shrink-0"
-        >
-          {p.status}
-        </StatusBadge>
+        {/* TITLE */}
+
+        <h3 className="text-sm font-semibold text-txprim leading-snug line-clamp-2 group-hover:text-cyan transition-colors">
+          {p.title}
+        </h3>
       </div>
 
-      {/* DESCRIPTION */}
+      <StatusBadge
+        variant={statusVariant}
+        className="shrink-0 text-[10px]"
+      >
+        {statusLabel}
+      </StatusBadge>
+    </div>
 
-      <p className="text-xs text-txsec mb-3 line-clamp-2">
-        {p.description ||
-          "No description provided."}
-      </p>
+    {/* =====================================================
+   * DESCRIPTION
+   * =================================================== */}
 
-      {/* PROPOSAL INFO */}
+    <p className="text-[11px] text-txsec leading-relaxed mt-2 line-clamp-2">
+      {p.description ||
+        "No description provided for this proposal."}
+    </p>
 
-      <div className="card bg-bgdark p-3 mb-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-txdim uppercase tracking-wide">
-            Requested
-          </span>
+    {/* =====================================================
+   * REQUESTED AMOUNT
+   * =================================================== */}
 
-          <span className="text-sm font-mono text-cyan">
-            {formatSol(
-              p.amount,
-            )}{" "}
-            {p.currency}
-          </span>
+    <div className="mt-3 flex items-center justify-between rounded-lg bg-bgdark border border-bdlight px-3 py-2">
+      <div>
+        <div className="text-[9px] uppercase tracking-wider text-txdim">
+          Requested
         </div>
 
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-txdim uppercase tracking-wide">
-            Votes
-          </span>
-
-          <span className="text-sm font-mono text-txprim">
-            {totalVotes}
-            {memberCount > 0
-              ? ` / ${memberCount}`
-              : ""}
-          </span>
+        <div className="text-sm font-mono font-semibold text-cyan mt-0.5">
+          {formatSol(p.amount)} {p.currency}
         </div>
       </div>
 
-      {/* VOTING RESULTS */}
+      <div className="text-right">
+        <div className="text-[9px] uppercase tracking-wider text-txdim">
+          Participation
+        </div>
 
-      <div className="space-y-1.5 mb-3">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-green flex items-center gap-1">
+        <div className="text-xs font-mono text-txprim mt-0.5">
+          {totalVotes}
+          {p.memberCount > 0
+            ? ` / ${p.memberCount}`
+            : ""}
+        </div>
+      </div>
+    </div>
+
+    {/* =====================================================
+   * VOTES
+   * =================================================== */}
+
+    <div className="mt-3">
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center gap-3 text-[10px]">
+          <span className="flex items-center gap-1 text-green">
             <ThumbsUp className="w-3 h-3" />
-
             {p.votes.yes}
           </span>
 
-          <span className="text-red flex items-center gap-1">
+          <span className="flex items-center gap-1 text-red">
             <ThumbsDown className="w-3 h-3" />
-
             {p.votes.no}
           </span>
 
-          <span className="text-txdim flex items-center gap-1">
+          <span className="flex items-center gap-1 text-txdim">
             <Minus className="w-3 h-3" />
-
             {p.votes.abstain}
           </span>
         </div>
 
-        {/* VOTE BAR */}
-
-        <div className="flex h-2 rounded-full overflow-hidden bg-bgpanel2">
-          {yesPct > 0 && (
-            <div
-              className="h-full bg-green"
-              style={{
-                width: `${yesPct}%`,
-              }}
-            />
-          )}
-
-          {noPct > 0 && (
-            <div
-              className="h-full bg-red"
-              style={{
-                width: `${noPct}%`,
-              }}
-            />
-          )}
-
-          {abstainPct > 0 && (
-            <div
-              className="h-full bg-bdbright"
-              style={{
-                width: `${abstainPct}%`,
-              }}
-            />
-          )}
-        </div>
-
-        {/* VOTE TOTAL */}
-
-        <div className="flex items-center justify-between text-xs text-txdim">
-          <span>
-            {totalVotes}
-            {memberCount > 0
-              ? `/${memberCount}`
-              : ""}{" "}
-            voted
-          </span>
-
-          {p.hoursLeft > 0 && (
-            <span className="text-yellow flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-
-              {p.hoursLeft}h left
-            </span>
-          )}
-
-          {p.status ===
-            "expired" && (
-              <span className="text-red">
-                Voting ended
-              </span>
-            )}
-        </div>
+        <span className="text-[10px] text-txdim">
+          {totalVotes} voted
+        </span>
       </div>
 
-      {/* FOOTER */}
+      {/* COMPACT VOTE BAR */}
 
-      <div className="flex items-center justify-between mt-auto pt-3 border-t border-bdlight">
-        {/* ON-CHAIN */}
+      <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-bgpanel2">
+        {yesPct > 0 && (
+          <div
+            className="h-full bg-green transition-all"
+            style={{
+              width: `${yesPct}%`,
+            }}
+          />
+        )}
 
-        <StatusBadge variant="info">
-          On-chain
-        </StatusBadge>
+        {noPct > 0 && (
+          <div
+            className="h-full bg-red transition-all"
+            style={{
+              width: `${noPct}%`,
+            }}
+          />
+        )}
 
-        {/* ACTION */}
+        {abstainPct > 0 && (
+          <div
+            className="h-full bg-bdbright transition-all"
+            style={{
+              width: `${abstainPct}%`,
+            }}
+          />
+        )}
+      </div>
+    </div>
 
-        {p.status === "voting" ? (
-          <span className="text-xs text-cyan flex items-center gap-1">
-            Vote now
+    {/* =====================================================
+   * FOOTER
+   * =================================================== */}
 
-            <ChevronRight className="w-3 h-3" />
-          </span>
+    <div className="mt-auto pt-3 flex items-center justify-between border-t border-bdlight">
+      {/* TIME */}
+
+      <div className="flex items-center gap-1.5">
+        {p.status === "voting" && p.hoursLeft > 0 ? (
+          <>
+            <Clock className="w-3 h-3 text-yellow" />
+
+            <span className="text-[10px] text-yellow">
+              {p.hoursLeft < 24
+                ? `${p.hoursLeft}h left`
+                : `${Math.ceil(p.hoursLeft / 24)}d left`}
+            </span>
+          </>
+        ) : p.status === "expired" ? (
+          <>
+            <Clock className="w-3 h-3 text-red" />
+
+            <span className="text-[10px] text-red">
+              Voting ended
+            </span>
+          </>
+        ) : p.status === "executed" ? (
+          <>
+            <Check className="w-3 h-3 text-green" />
+
+            <span className="text-[10px] text-green">
+              Executed
+            </span>
+          </>
         ) : (
-          <span className="text-xs text-cyan flex items-center gap-1">
-            View
-
-            <ChevronRight className="w-3 h-3" />
+          <span className="text-[10px] text-txdim">
+            {p.status === "passed"
+              ? "Vote passed"
+              : "Finalized"}
           </span>
         )}
       </div>
-    </PixelCard>
-  );
+
+      {/* ACTION */}
+
+      <div className="flex items-center gap-1 text-[10px] text-cyan font-medium group-hover:translate-x-0.5 transition-transform">
+        {p.status === "voting"
+          ? "Vote now"
+          : "View proposal"}
+
+        <ChevronRight className="w-3 h-3" />
+      </div>
+    </div>
+  </PixelCard>
+
+);
 }

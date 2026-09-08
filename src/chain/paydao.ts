@@ -1757,15 +1757,198 @@ export async function fetchProposal(
  * FETCH ALL PROPOSALS
  * ========================================================== */
 
-export async function fetchAllProposals(): Promise<any[]> {
-  const program =
-    getProgram();
+export async function fetchAllProposals(): Promise<OnChainProposal[]> {
+  const program = getProgram();
 
-  return (
+  const accounts = await (
     program.account as any
   ).proposal.all();
-}
 
+  return accounts.map(
+    (item: {
+      publicKey: PublicKey;
+      account: Record<string, unknown>;
+    }): OnChainProposal => {
+      const raw = item.account;
+
+      const proposalPublicKey = item.publicKey;
+
+      const groupAddress = getPublicKeyString(
+        raw.group ??
+        raw.groupId ??
+        raw.groupAddress ??
+        raw.group_address,
+      );
+
+      return {
+        /*
+         * PDA
+         */
+        address: proposalPublicKey.toBase58(),
+
+        /*
+         * Group PDA
+         */
+        group: groupAddress,
+
+        /*
+         * Proposal ID
+         */
+        id:
+          raw.id ??
+          raw.proposalId ??
+          raw.proposal_id ??
+          0,
+
+        /*
+         * Basic information
+         */
+        title: String(
+          raw.title ?? "",
+        ),
+
+        description: String(
+          raw.description ?? "",
+        ),
+
+        /*
+         * Amount
+         *
+         * Rust:
+         * amount_lamports: u64
+         */
+        amountLamports: toStringValue(
+          raw.amount_lamports ??
+          raw.amountLamports ??
+          raw.amount ??
+          0,
+        ),
+
+        /*
+         * IMPORTANT:
+         *
+         * Keep amount as lamports here.
+         * Your ProposalsPage already converts it
+         * to SOL when amountLamports exists.
+         */
+        amount: toNumber(
+          raw.amount_lamports ??
+          raw.amountLamports ??
+          raw.amount ??
+          0,
+        ),
+
+        /*
+         * Creator
+         *
+         * Rust field is `creator`
+         */
+        proposer: getPublicKeyString(
+          raw.creator ??
+          raw.proposer ??
+          raw.author,
+        ),
+
+        /*
+         * Recipient
+         */
+        recipient: getPublicKeyString(
+          raw.recipient ??
+          raw.recipientWallet ??
+          raw.recipient_wallet,
+        ),
+
+        /*
+         * Votes
+         *
+         * Rust:
+         * yes
+         * no
+         * abstain
+         */
+        yesVotes: toNumber(
+          raw.yes ??
+          raw.yesVotes ??
+          raw.yes_votes ??
+          0,
+        ),
+
+        noVotes: toNumber(
+          raw.no ??
+          raw.noVotes ??
+          raw.no_votes ??
+          0,
+        ),
+
+        abstainVotes: toNumber(
+          raw.abstain ??
+          raw.abstainVotes ??
+          raw.abstain_votes ??
+          0,
+        ),
+
+        /*
+         * Total voters
+         */
+        voterCount: toNumber(
+          raw.voter_count ??
+          raw.voterCount ??
+          0,
+        ),
+
+        /*
+         * Status
+         */
+        status: String(
+          raw.status ?? "",
+        ),
+
+        /*
+         * Proposal creation timestamp.
+         *
+         * Your current Rust struct DOES NOT show a
+         * created_at field, so this will remain 0
+         * unless your account actually has one.
+         */
+        createdAt: toStringValue(
+          raw.created_at ??
+          raw.createdAt ??
+          0,
+        ),
+
+        /*
+         * Voting deadline
+         *
+         * Rust:
+         * voting_deadline: i64
+         */
+        deadline: toStringValue(
+          raw.voting_deadline ??
+          raw.votingDeadline ??
+          raw.deadline ??
+          0,
+        ),
+
+        /*
+         * Your Rust create_proposal function does not
+         * set `executed`.
+         */
+        executed: Boolean(
+          raw.executed ?? false,
+        ),
+
+        /*
+         * Keep the original Anchor account too.
+         * Very useful for debugging / future fields.
+         */
+        raw: {
+          ...raw,
+          publicKey: proposalPublicKey,
+        },
+      };
+    },
+  );
+}
 /* ============================================================
  * FETCH GROUP PROPOSALS
  * ========================================================== */
