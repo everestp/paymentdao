@@ -8,24 +8,18 @@ const navItems = [
     section: 'MAIN', items: [
       { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
       { label: 'Groups', icon: Users, path: '/groups' },
-      { label: 'Payments', icon: ArrowLeftRight, path: '/payments' },
+
       { label: 'Wallet', icon: Wallet, path: '/wallet' },
     ]
   },
   {
     section: 'WORKSPACE', items: [
       { label: 'Proposals', icon: FileText, path: '/proposals' },
-      { label: 'Send', icon: ArrowLeftRight, path: '/send' },
-      { label: 'Receive', icon: Receipt, path: '/receive' },
+
+
     ]
   },
-  {
-    section: 'SYSTEM', items: [
-      { label: 'Transactions', icon: Receipt, path: '/transactions' },
-      { label: 'Activity', icon: Activity, path: '/activity' },
-      { label: 'Settings', icon: Settings, path: '/settings' },
-    ]
-  },
+
 ];
 
 export function Sidebar() {
