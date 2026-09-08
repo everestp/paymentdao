@@ -1635,6 +1635,38 @@ PayDAO is built around:
 **PayDAO connects the two into a programmable DAO treasury system.**
 
 ---
+## 📸 Application Preview
+
+### HomePage
+
+<p align="center">
+  <img src="docs/images/page_1.png" alt="PayDAO Dashboard" width="90%" />
+</p>
+
+### DashBoard
+
+<p align="center">
+  <img src="docs/images/page_2.png" alt="PayDAO Groups and Treasury" width="90%" />
+</p>
+
+### Group and Group Creation
+
+<p align="center">
+  <img src="docs/images/page_3.png" alt="PayDAO Proposal Creation" width="90%" />
+</p>
+
+### Wallet DashBoard
+
+<p align="center">
+  <img src="docs/images/page_4.png" alt="PayDAO Private Voting" width="90%" />
+</p>
+
+### Proposal Execution
+
+<p align="center">
+  <img src="docs/images/page_5.png" alt="PayDAO Proposal Execution" width="90%" />
+</p>
+
 
 # 🚀 One-Line Summary
 
