@@ -124,30 +124,12 @@ export function GroupsPage() {
         );
       }
 
-      /*
-       * Anchor automatically returns:
-       *
-       * {
-       *   publicKey,
-       *   account
-       * }
-       *
-       * for every Group account owned
-       * by this program.
-       */
-
       const accounts =
         await program.account.group.all();
 
       const mappedGroups: GroupData[] =
         (accounts ?? []).map(
           ({ publicKey, account }: any) => {
-            /*
-             * ==================================================
-             * EXACT RUST GROUP FIELDS
-             * ==================================================
-             */
-
             const targetLamports =
               toNumber(
                 account?.targetLamports,
@@ -187,16 +169,6 @@ export function GroupsPage() {
               account?.creator?.toBase58?.() ??
               '';
 
-            /*
-             * IMPORTANT:
-             *
-             * Rust Group uses:
-             *
-             * pub deadline: i64
-             *
-             * NOT votingDeadline.
-             */
-
             const deadline =
               formatDeadline(
                 account?.deadline,
@@ -220,10 +192,6 @@ export function GroupsPage() {
               createdAvatarColor:
                 'cyan',
 
-              /*
-               * lamports -> SOL
-               */
-
               requiredAmount:
                 lamportsToSol(
                   targetLamports,
@@ -239,23 +207,9 @@ export function GroupsPage() {
                   reservedLamports,
                 ),
 
-              /*
-               * Your current Anchor program
-               * only supports native SOL.
-               */
-
               currency: 'SOL',
 
               deadline,
-
-              /*
-               * Rust:
-               *
-               * visibility: u8
-               *
-               * 0 = private
-               * 1 = public
-               */
 
               visibility:
                 toNumber(
@@ -269,13 +223,6 @@ export function GroupsPage() {
 
               memberCount,
 
-              /*
-               * Group stores total proposal count.
-               *
-               * It does NOT store active proposal
-               * count directly.
-               */
-
               activeProposals:
                 proposalCount,
 
@@ -286,36 +233,14 @@ export function GroupsPage() {
               governance:
                 'democratic',
 
-              /*
-               * BPS -> percentage
-               *
-               * 6000 BPS = 60%
-               */
-
               votingThreshold:
                 votingThresholdBps / 100,
-
-              /*
-               * 5000 BPS = 50%
-               */
 
               quorum:
                 quorumBps / 100,
 
-              /*
-               * Your Rust Group does NOT contain
-               * createdAt.
-               *
-               * Therefore we don't pretend blockchain
-               * has this information.
-               */
-
               createdAt:
                 new Date().toISOString(),
-
-              /*
-               * Treasury PDA can be derived when needed.
-               */
 
               treasuryAddress:
                 undefined,
@@ -347,21 +272,9 @@ export function GroupsPage() {
     }
   }, [isWalletConnected]);
 
-  /*
-   * ============================================================
-   * LOAD ON PAGE OPEN / WALLET CHANGE
-   * ============================================================
-   */
-
   useEffect(() => {
     loadGroups();
   }, [loadGroups]);
-
-  /*
-   * ============================================================
-   * TOTALS
-   * ============================================================
-   */
 
   const totalFunded =
     groups.reduce(
@@ -386,7 +299,7 @@ export function GroupsPage() {
    */
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
 
       {/* ======================================================
           HEADER
@@ -414,35 +327,37 @@ export function GroupsPage() {
           STATS
       ====================================================== */}
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
 
-        <PixelCard className="p-4 text-center">
-          <div className="text-2xl font-heading font-semibold text-cyan">
+        <PixelCard className="p-5 text-center card-hover">
+          <div className="text-3xl font-heading font-semibold text-cyan tabular-nums">
             {groups.length}
           </div>
 
-          <div className="text-xs text-txdim uppercase tracking-wide mt-1">
-            On-chain Groups
+          <div className="text-xs text-txdim mt-1.5">
+            On-chain groups
           </div>
         </PixelCard>
 
-        <PixelCard className="p-4 text-center">
-          <div className="text-2xl font-heading font-semibold text-green">
-            {formatSol(totalFunded)} SOL
+        <PixelCard className="p-5 text-center card-hover">
+          <div className="text-3xl font-heading font-semibold text-green font-mono tabular-nums">
+            {formatSol(totalFunded)}{' '}
+            <span className="text-lg text-txdim font-body">SOL</span>
           </div>
 
-          <div className="text-xs text-txdim uppercase tracking-wide mt-1">
-            Total Funded
+          <div className="text-xs text-txdim mt-1.5">
+            Total funded
           </div>
         </PixelCard>
 
-        <PixelCard className="p-4 text-center">
-          <div className="text-2xl font-heading font-semibold text-yellow">
-            {formatSol(totalTarget)} SOL
+        <PixelCard className="p-5 text-center card-hover">
+          <div className="text-3xl font-heading font-semibold text-yellow font-mono tabular-nums">
+            {formatSol(totalTarget)}{' '}
+            <span className="text-lg text-txdim font-body">SOL</span>
           </div>
 
-          <div className="text-xs text-txdim uppercase tracking-wide mt-1">
-            Total Target
+          <div className="text-xs text-txdim mt-1.5">
+            Total target
           </div>
         </PixelCard>
 
@@ -453,18 +368,18 @@ export function GroupsPage() {
       ====================================================== */}
 
       {!isWalletConnected && (
-        <PixelCard className="p-10 text-center">
+        <PixelCard className="p-12 text-center">
 
-          <WalletCards className="w-10 h-10 mx-auto text-cyan mb-4" />
+          <div className="w-14 h-14 mx-auto flex items-center justify-center rounded-2xl bg-cyan/10 border border-cyan/20 mb-5">
+            <WalletCards className="w-7 h-7 text-cyan" />
+          </div>
 
           <h3 className="text-lg font-heading font-semibold text-txprim">
             Connect your wallet
           </h3>
 
-          <p className="text-sm text-txdim mt-2">
-            Connect a Solana wallet to load
-            PayDAO groups directly from the
-            blockchain.
+          <p className="text-sm text-txdim mt-2 max-w-sm mx-auto">
+            Connect a Solana wallet to load PayDAO groups directly from the blockchain.
           </p>
 
         </PixelCard>
@@ -476,9 +391,9 @@ export function GroupsPage() {
 
       {isWalletConnected &&
         loading && (
-          <PixelCard className="p-10 text-center">
+          <PixelCard className="p-12 text-center">
 
-            <div className="w-8 h-8 mx-auto border-2 border-cyan border-t-transparent rounded-full animate-spin" />
+            <div className="w-9 h-9 mx-auto border-2 border-bdlight border-t-cyan rounded-full spin" />
 
             <p className="text-sm text-txdim mt-4">
               Loading groups from Solana...
@@ -494,9 +409,9 @@ export function GroupsPage() {
       {isWalletConnected &&
         !loading &&
         error && (
-          <PixelCard className="p-6 text-center border-red-500/30">
+          <PixelCard className="p-8 text-center border-red/30 bg-red/5">
 
-            <p className="text-sm text-red-400">
+            <p className="text-sm text-red">
               {error}
             </p>
 
@@ -520,7 +435,7 @@ export function GroupsPage() {
         !loading &&
         !error &&
         groups.length === 0 && (
-          <PixelCard className="p-12 text-center">
+          <PixelCard className="p-14 text-center">
 
             <div className="w-16 h-16 mx-auto flex items-center justify-center rounded-2xl bg-cyan/10 border border-cyan/20">
               <Users className="w-8 h-8 text-cyan" />
@@ -531,16 +446,13 @@ export function GroupsPage() {
             </h3>
 
             <p className="mt-2 text-sm text-txdim max-w-md mx-auto">
-              There are currently no PayDAO
-              groups on-chain. Create the first
-              group and start a collaborative
-              funding pool.
+              There are currently no PayDAO groups on-chain. Create the first group and start a collaborative funding pool.
             </p>
 
             <PixelButton
               variant="primary"
               size="sm"
-              className="mt-5"
+              className="mt-6"
               onClick={() =>
                 setShowCreate(true)
               }
@@ -591,6 +503,8 @@ export function GroupsPage() {
                   currentBalance,
                 );
 
+              const isFunded = pct >= 100;
+
               return (
                 <PixelCard
                   key={group.id}
@@ -600,7 +514,8 @@ export function GroupsPage() {
                       `/groups/${group.id}`,
                     )
                   }
-                  className="group cursor-pointer"
+                  className={`group cursor-pointer card-hover p-5 ${isFunded ? 'glow-green' : ''
+                    }`}
                 >
 
                   {/* ==================================================
@@ -611,7 +526,7 @@ export function GroupsPage() {
 
                     <div className="flex items-center gap-3 min-w-0">
 
-                      <div className="w-12 h-12 flex items-center justify-center bg-cyan/10 border border-cyan/30 rounded-xl font-heading font-semibold text-lg text-cyan shrink-0">
+                      <div className="w-11 h-11 flex items-center justify-center bg-cyan/10 border border-cyan/30 rounded-xl font-heading font-semibold text-lg text-cyan shrink-0">
                         {group?.name
                           ?.charAt(0)
                           ?.toUpperCase() ||
@@ -637,7 +552,7 @@ export function GroupsPage() {
 
                     <StatusBadge
                       variant={
-                        pct >= 100
+                        isFunded
                           ? 'success'
                           : group?.active
                             ? 'info'
@@ -645,7 +560,7 @@ export function GroupsPage() {
                       }
                       className="shrink-0"
                     >
-                      {pct >= 100
+                      {isFunded
                         ? 'Funded'
                         : group?.active
                           ? 'Active'
@@ -658,7 +573,7 @@ export function GroupsPage() {
                       DESCRIPTION
                   ================================================== */}
 
-                  <p className="text-xs text-txsec mb-4 line-clamp-2">
+                  <p className="text-xs text-txsec mb-4 line-clamp-2 leading-relaxed">
                     {group?.description ||
                       'No description provided.'}
                   </p>
@@ -667,23 +582,19 @@ export function GroupsPage() {
                       FUNDING
                   ================================================== */}
 
-                  <div className="mb-4">
+                  <div className="card bg-bgdark p-3.5 mb-4">
 
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-2.5">
 
-                      <span className="text-lg font-heading font-semibold text-txprim font-mono">
+                      <span className="text-lg font-heading font-semibold text-txprim font-mono tabular-nums">
                         {formatSol(
                           currentBalance,
                         )}{' '}
-                        SOL
+                        <span className="text-xs text-txdim font-body">SOL</span>
                       </span>
 
-                      <span className="text-sm text-txdim font-mono">
-                        of{' '}
-                        {formatSol(
-                          requiredAmount,
-                        )}{' '}
-                        SOL
+                      <span className="text-xs text-txdim font-mono">
+                        of {formatSol(requiredAmount)} SOL
                       </span>
 
                     </div>
@@ -694,6 +605,9 @@ export function GroupsPage() {
                         className="progress-bar-fill"
                         style={{
                           width: `${pct}%`,
+                          background: isFunded
+                            ? 'var(--accent-green)'
+                            : 'var(--accent-cyan)',
                         }}
                       />
 
@@ -701,16 +615,17 @@ export function GroupsPage() {
 
                     <div className="flex items-center justify-between text-xs">
 
-                      <span className="text-cyan font-medium">
-                        {pct.toFixed(1)}%
-                        funded
+                      <span
+                        className={`font-medium ${isFunded ? 'text-green' : 'text-cyan'
+                          }`}
+                      >
+                        {pct.toFixed(1)}% funded
                       </span>
 
                       <span className="text-txdim font-mono">
-                        {formatSol(
-                          remaining,
-                        )}{' '}
-                        SOL remaining
+                        {isFunded
+                          ? 'Goal reached'
+                          : `${formatSol(remaining)} SOL remaining`}
                       </span>
 
                     </div>
@@ -721,14 +636,14 @@ export function GroupsPage() {
                       GROUP STATS
                   ================================================== */}
 
-                  <div className="grid grid-cols-3 gap-3 mb-4">
+                  <div className="grid grid-cols-3 gap-2 mb-4 divide-x divide-bdlight">
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2 pl-0.5">
 
-                      <Users className="w-3.5 h-3.5 text-txdim" />
+                      <Users className="w-3.5 h-3.5 text-txdim shrink-0" />
 
                       <div>
-                        <div className="text-sm font-mono text-txprim">
+                        <div className="text-sm font-mono text-txprim tabular-nums">
                           {group?.memberCount ??
                             0}
                         </div>
@@ -740,12 +655,12 @@ export function GroupsPage() {
 
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2 pl-3">
 
-                      <Target className="w-3.5 h-3.5 text-txdim" />
+                      <Target className="w-3.5 h-3.5 text-txdim shrink-0" />
 
                       <div>
-                        <div className="text-sm font-mono text-txprim">
+                        <div className="text-sm font-mono text-txprim tabular-nums">
                           {group?.proposalCount ??
                             0}
                         </div>
@@ -757,9 +672,9 @@ export function GroupsPage() {
 
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2 pl-3 min-w-0">
 
-                      <Clock className="w-3.5 h-3.5 text-txdim" />
+                      <Clock className="w-3.5 h-3.5 text-txdim shrink-0" />
 
                       <div className="min-w-0">
 
@@ -789,16 +704,16 @@ export function GroupsPage() {
                         'public'
                         ? 'Public'
                         : 'Private'}{' '}
-                      • Democratic
+                      · Democratic
                     </span>
 
-                    <div className="flex items-center gap-1 text-cyan group-hover:gap-2 transition-all">
+                    <div className="flex items-center gap-1 text-cyan group-hover:gap-1.5 transition-all">
 
-                      <span className="text-sm font-medium">
-                        Open Group
+                      <span className="text-xs font-medium">
+                        Open group
                       </span>
 
-                      <ChevronRight className="w-4 h-4" />
+                      <ChevronRight className="w-3.5 h-3.5" />
 
                     </div>
 
@@ -825,10 +740,6 @@ export function GroupsPage() {
 
           setShowCreate(false);
 
-          /*
-           * Transaction has completed.
-           * Read the new state directly from Solana.
-           */
           await loadGroups();
         }}
       />
