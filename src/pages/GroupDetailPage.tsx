@@ -730,8 +730,8 @@ export default function GroupDetailPage() {
   /* ==========================================================
    * DONATE
    * ======================================================== */
-
   const handleContribute = async (
+    groupId: string,
     amount: number,
     currency: Currency,
   ) => {
@@ -740,16 +740,24 @@ export default function GroupDetailPage() {
         "Group has not loaded yet.",
       );
     }
-    console.log(
-      "Contribution successful:",
-      amount,
-    );
-    const signature =
-      await contributeOnChain(
-        chainGroup.address,
-        Number(0.01),
-        "SOL",
+
+    if (currency !== "SOL") {
+      throw new Error(
+        "Only SOL contributions are currently supported.",
       );
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error(
+        "Invalid contribution amount.",
+      );
+    }
+
+    const signature = await contributeOnChain(
+      chainGroup.address,
+      amount,
+      currency,
+    );
 
     console.log(
       "Contribution successful:",
@@ -760,7 +768,6 @@ export default function GroupDetailPage() {
 
     await refreshGroup();
   };
-
   /* ==========================================================
    * CREATE PROPOSAL
    * ======================================================== */

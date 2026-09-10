@@ -96,15 +96,17 @@ export function DonateModal({
 
     setError(null);
 
-    const parsedAmount = Number(amount);
+    const trimmedAmount = amount.trim();
 
     /*
      * Validate amount
      */
-    if (!amount.trim()) {
+    if (!trimmedAmount) {
       setError("Please enter a contribution amount.");
       return;
     }
+
+    const parsedAmount = Number(trimmedAmount);
 
     if (!Number.isFinite(parsedAmount)) {
       setError("Please enter a valid amount.");
@@ -128,18 +130,21 @@ export function DonateModal({
       return;
     }
 
+    /*
+     * Don't let a contribution overshoot what's still needed
+     */
+    if (requiredAmount > 0 && parsedAmount > remaining) {
+      setError(
+        `This group only needs ${remaining.toLocaleString("en-US", {
+          maximumFractionDigits: 4,
+        })} more SOL. Please enter an amount at or below that.`,
+      );
+      return;
+    }
+
     try {
       setStep("processing");
 
-      /*
-       * This calls:
-       *
-       * onContribute(
-       *   group.id,
-       *   parsedAmount,
-       *   currency
-       * )
-       */
       await onContribute(
         group.id,
         parsedAmount,
@@ -302,6 +307,7 @@ export function DonateModal({
                   id="donation-amount"
                   type="number"
                   min="0.000001"
+                  max={remaining > 0 ? remaining : undefined}
                   step="any"
                   value={amount}
                   onChange={(e) => {
